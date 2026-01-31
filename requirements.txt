@@ -1,0 +1,23 @@
+# Core framework
+fastapi>=0.110.0
+
+# ASGI server
+uvicorn[standard]>=0.27.0
+
+# ORM & database
+sqlalchemy>=2.0.0
+pymysql>=1.1.0
+alembic>=1.13.0
+
+# Settings & environment
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Testing
+pytest>=8.0.0
+httpx>=0.26.0
