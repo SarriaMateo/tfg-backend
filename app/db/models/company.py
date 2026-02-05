@@ -1,10 +1,9 @@
 # app/db/models/company.py
 from __future__ import annotations
 
-import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import BigInteger, String
+from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -15,10 +14,10 @@ if TYPE_CHECKING:
 class Company(Base):
     __tablename__ = "companies"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    NIF: Mapped[str] = mapped_column(String(9), unique=True)
+    nif: Mapped[Optional[str]] = mapped_column(String(9), unique=True, nullable=True)
 
     users: Mapped[list["User"]] = relationship(
         back_populates="company",
