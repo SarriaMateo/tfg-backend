@@ -22,20 +22,20 @@ class CompanyRegistrationService:
         # 1. Reglas de unicidad
         if CompanyRepository.get_by_email(db, data.company.email):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Company email already exists"
+                status_code=status.HTTP_409_CONFLICT,
+                detail="COMPANY_EMAIL_ALREADY_EXISTS"
             )
 
         if data.company.nif and CompanyRepository.get_by_nif(db, data.company.nif):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Company NIF already exists"
+                status_code=status.HTTP_409_CONFLICT,
+                detail="COMPANY_NIF_ALREADY_EXISTS"
             )
 
         if UserRepository.get_by_username(db, data.admin_user.username):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already exists"
+                status_code=status.HTTP_409_CONFLICT,
+                detail="USERNAME_ALREADY_EXISTS"
             )
 
         # 2. Crear Company

@@ -1,19 +1,19 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, Field
 from typing import Optional
 import re
 
 
 class CompanyCreate(BaseModel):
-    name: str
-    email: EmailStr
+    name: str = Field(min_length=3, max_length=50)
+    email: EmailStr = Field(max_length=50)
     nif: Optional[str] = None
 
     @field_validator("nif")
     @classmethod
     def validate_nif(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return value
-        value = value.upper()
+        if not value or not value.strip():
+            return None
+        value = value.upper().strip()
         if not re.match(r"^[A-Z]\d{8}$", value):
             raise ValueError("Invalid NIF format")
         return value

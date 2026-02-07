@@ -50,8 +50,8 @@ async def test_register_company_duplicate_email(client):
     await client.post("/api/v1/companies/register", json=payload)
     response = await client.post("/api/v1/companies/register", json=payload)
 
-    assert response.status_code == 400
-    assert "email" in response.json()["detail"].lower()
+    assert response.status_code == 409
+    assert "COMPANY_EMAIL_ALREADY_EXISTS" in response.json()["detail"]
 
 @pytest.mark.asyncio
 async def test_register_company_duplicate_username(client):
@@ -82,8 +82,8 @@ async def test_register_company_duplicate_username(client):
     await client.post("/api/v1/companies/register", json=payload1)
     response = await client.post("/api/v1/companies/register", json=payload2)
 
-    assert response.status_code == 400
-    assert "username" in response.json()["detail"].lower()
+    assert response.status_code == 409
+    assert "USERNAME_ALREADY_EXISTS" in response.json()["detail"]
 
 @pytest.mark.asyncio
 async def test_register_company_invalid_email(client):
@@ -101,7 +101,9 @@ async def test_register_company_invalid_email(client):
 
     response = await client.post("/api/v1/companies/register", json=payload)
 
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert "email" in response.json()["detail"].lower()
+    assert "INVALID_EMAIL_FORMAT" in response.json()["detail"]
 
 @pytest.mark.asyncio
 async def test_password_is_not_returned(client):
