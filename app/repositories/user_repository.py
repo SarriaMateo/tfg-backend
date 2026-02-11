@@ -5,6 +5,10 @@ from app.db.models.user import User
 class UserRepository:
 
     @staticmethod
+    def get_by_id(db: Session, user_id: int) -> User:
+        return db.query(User).filter(User.id == user_id).first()
+
+    @staticmethod
     def get_by_username(db: Session, username: str) -> User:
         return db.query(User).filter(User.username == username).first()
 

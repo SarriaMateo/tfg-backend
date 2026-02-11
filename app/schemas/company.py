@@ -29,6 +29,14 @@ class CompanyResponse(BaseModel):
         from_attributes = True
 
 
+class CompanyNameResponse(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
 class CompanyRegistrationResponse(BaseModel):
     company: CompanyResponse
     user: "UserResponse"  # noqa: F821
