@@ -1,0 +1,314 @@
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+from typing import Union
+
+from app.core.security import hash_password
+from app.repositories.user_repository import UserRepository
+from app.repositories.branch_repository import BranchRepository
+from app.db.models.user import User, Role
+from app.schemas.user import UserCreate, UserUpdate, UserUpdateAdmin
+
+
+class UserService:
+    """Business logic service for users"""
+
+    @staticmethod
+    def create_user(
+        db: Session,
+        user_data: UserCreate,
+        company_id: int,
+        admin_user: User
+    ) -> User:
+        """
+        Create a new user. Only admins can create users.
+        Validations:
+        - Username must be unique across the entire application
+        - User can only be created if in the same company as the admin
+        - If a branch is assigned, it must belong to the same company
+        """
+        # Verify that the authenticated user is admin
+        if admin_user.role != Role.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="INSUFFICIENT_ROLE"
+            )
+
+        # Verify that the admin is creating users in their own company
+        if admin_user.company_id != company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="CANNOT_CREATE_USER_IN_DIFFERENT_COMPANY"
+            )
+
+        # Verify that the username is unique
+        existing_user = UserRepository.get_by_username(db, user_data.username)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="USERNAME_ALREADY_EXISTS"
+            )
+
+        # Validate that admin users cannot have a branch assigned
+        if user_data.role.value == "ADMIN" and user_data.branch_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ADMIN_CANNOT_HAVE_BRANCH"
+            )
+
+        # Validate that if a branch is assigned, it belongs to the same company
+        if user_data.branch_id:
+            branch = BranchRepository.get_by_id(db, user_data.branch_id)
+            if not branch:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="BRANCH_NOT_FOUND"
+                )
+            if branch.company_id != company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="BRANCH_BELONGS_TO_DIFFERENT_COMPANY"
+                )
+
+        # Create the new user
+        new_user = User(
+            name=user_data.name,
+            username=user_data.username,
+            hashed_password=hash_password(user_data.password),
+            role=Role(user_data.role.value),
+            company_id=company_id,
+            branch_id=user_data.branch_id
+        )
+
+        return UserRepository.create(db, new_user)
+
+    @staticmethod
+    def get_user(
+        db: Session,
+        user_id: int,
+        current_user: User
+    ) -> User:
+        """
+        Get a user.
+        Rules:
+        - Admins can view any user from their company
+        - Non-admin users can only view their own profile
+        """
+        user = UserRepository.get_by_id(db, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="USER_NOT_FOUND"
+            )
+
+        # If not admin, can only view their own user
+        if current_user.role != Role.ADMIN:
+            if current_user.id != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="CANNOT_VIEW_OTHER_USERS"
+                )
+        else:
+            # If admin, can only view users from their company
+            if current_user.company_id != user.company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="USER_FROM_DIFFERENT_COMPANY"
+                )
+
+        return user
+
+    @staticmethod
+    def get_users_by_company(
+        db: Session,
+        company_id: int,
+        admin_user: User
+    ) -> list[User]:
+        """
+        Get all users from a company.
+        Only admins from that company can view them.
+        """
+        if admin_user.role != Role.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="INSUFFICIENT_ROLE"
+            )
+
+        if admin_user.company_id != company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="COMPANY_ACCESS_DENIED"
+            )
+
+        return UserRepository.get_by_company_id(db, company_id)
+
+    @staticmethod
+    def update_user(
+        db: Session,
+        user_id: int,
+        user_data: Union[UserUpdate, UserUpdateAdmin],
+        current_user: User
+    ) -> User:
+        """
+        Update a user.
+        Rules:
+        - Admins can update any user from their company
+        - Non-admin users can only update their own profile and only certain fields
+        """
+        user = UserRepository.get_by_id(db, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="USER_NOT_FOUND"
+            )
+
+        # Verify authorization
+        is_admin = current_user.role == Role.ADMIN
+        is_own_user = current_user.id == user_id
+
+        if not is_admin and not is_own_user:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="CANNOT_UPDATE_OTHER_USERS"
+            )
+
+        # If not admin but is their own user
+        if not is_admin:
+            # Non-admins can only update: name, username, password
+            if isinstance(user_data, UserUpdateAdmin):
+                if user_data.role is not None or user_data.branch_id is not None:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="CANNOT_UPDATE_ROLE_OR_BRANCH"
+                    )
+
+        # If admin, verify updating users from their company
+        if is_admin:
+            if current_user.company_id != user.company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="USER_FROM_DIFFERENT_COMPANY"
+                )
+
+            # Validate role and branch changes only for admins
+            if isinstance(user_data, UserUpdateAdmin):
+                # Check which fields were explicitly sent
+                sent_fields = user_data.model_dump(exclude_unset=True)
+                
+                # If changing role
+                if user_data.role and user_data.role.value != user.role.value:
+                    # If changing from ADMIN to another
+                    if user.role == Role.ADMIN:
+                        # Verify it's not the only admin of the company
+                        admin_count = UserRepository.count_admins_by_company(
+                            db, user.company_id
+                        )
+                        if admin_count == 1:
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="CANNOT_CHANGE_ROLE_LAST_ADMIN"
+                            )
+                    
+                    # If changing to ADMIN and user has a branch
+                    if user_data.role.value == "ADMIN" and user.branch_id:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="ADMIN_CANNOT_HAVE_BRANCH"
+                        )
+
+                # Validate branch only if the field was sent
+                if "branch_id" in sent_fields:
+                    if user_data.branch_id is not None:  # Sent with a value (not null)
+                        # Check if user will be admin (either already is or being changed to admin)
+                        final_role = user_data.role.value if user_data.role else user.role.value
+                        if final_role == "ADMIN":
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="ADMIN_CANNOT_HAVE_BRANCH"
+                            )
+                        
+                        branch = BranchRepository.get_by_id(db, user_data.branch_id)
+                        if not branch:
+                            raise HTTPException(
+                                status_code=status.HTTP_404_NOT_FOUND,
+                                detail="BRANCH_NOT_FOUND"
+                            )
+                        if branch.company_id != current_user.company_id:
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="BRANCH_BELONGS_TO_DIFFERENT_COMPANY"
+                            )
+
+        # Validate unique username if changed
+        if user_data.username and user_data.username != user.username:
+            existing_user = UserRepository.get_by_username(db, user_data.username)
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="USERNAME_ALREADY_EXISTS"
+                )
+
+        # Update fields
+        if user_data.name:
+            user.name = user_data.name
+        if user_data.username:
+            user.username = user_data.username
+        if user_data.password:
+            user.hashed_password = hash_password(user_data.password)
+
+        # Admin-only fields
+        if isinstance(user_data, UserUpdateAdmin):
+            sent_fields = user_data.model_dump(exclude_unset=True)
+            
+            if user_data.role:
+                user.role = Role(user_data.role.value)
+            
+            # Only update branch_id if it was explicitly sent
+            if "branch_id" in sent_fields:
+                user.branch_id = user_data.branch_id
+
+        return UserRepository.update(db, user)
+
+    @staticmethod
+    def delete_user(
+        db: Session,
+        user_id: int,
+        admin_user: User
+    ) -> None:
+        """
+        Delete a user.
+        Rules:
+        - Only admins can delete users
+        - Admin can only delete users from their own company
+        - Cannot delete the only admin of a company
+        """
+        # Verify is admin
+        if admin_user.role != Role.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="INSUFFICIENT_ROLE"
+            )
+
+        user = UserRepository.get_by_id(db, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="USER_NOT_FOUND"
+            )
+
+        # Verify admin is deleting users from their company
+        if admin_user.company_id != user.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="USER_FROM_DIFFERENT_COMPANY"
+            )
+
+        # Verify it's not the only admin of the company
+        if user.role == Role.ADMIN:
+            admin_count = UserRepository.count_admins_by_company(db, user.company_id)
+            if admin_count == 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="CANNOT_DELETE_LAST_ADMIN"
+                )
+
+        UserRepository.delete(db, user)

@@ -12,6 +12,7 @@ from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.company import router as company_router
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.branch import router as branch_router
+from app.api.v1.routes.user import router as user_router
 
 app = FastAPI(title=settings.app_name)
 
@@ -30,6 +31,7 @@ app.include_router(health_router, prefix="/api/v1")
 app.include_router(company_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(branch_router, prefix="/api/v1")
+app.include_router(user_router, prefix="/api/v1")
 
 # Debug to check settings - NF1
 @app.get("/debug/settings")

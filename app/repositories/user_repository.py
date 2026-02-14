@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
-from app.db.models.user import User
+from sqlalchemy import and_
+from app.db.models.user import User, Role
 
 
 class UserRepository:
@@ -15,4 +16,35 @@ class UserRepository:
     @staticmethod
     def create(db: Session, user: User) -> User:
         db.add(user)
+        db.flush()
         return user
+
+    @staticmethod
+    def get_by_company_id(db: Session, company_id: int) -> list[User]:
+        return db.query(User).filter(User.company_id == company_id).all()
+
+    @staticmethod
+    def get_by_company_and_role(db: Session, company_id: int, role: Role) -> list[User]:
+        return db.query(User).filter(
+            and_(User.company_id == company_id, User.role == role)
+        ).all()
+
+    @staticmethod
+    def count_admins_by_company(db: Session, company_id: int) -> int:
+        return db.query(User).filter(
+            and_(User.company_id == company_id, User.role == Role.ADMIN)
+        ).count()
+
+    @staticmethod
+    def update(db: Session, user: User) -> User:
+        db.flush()
+        return user
+
+    @staticmethod
+    def delete(db: Session, user: User) -> None:
+        db.delete(user)
+        db.flush()
+
+    @staticmethod
+    def commit(db: Session) -> None:
+        db.commit()

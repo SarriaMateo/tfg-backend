@@ -4,13 +4,13 @@ from fastapi.responses import JSONResponse
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Convierte errores de validación de Pydantic en respuestas consistentes."""
+    """Convert Pydantic validation errors to consistent responses."""
     for error in exc.errors():
         field_name = error["loc"][-1] if error["loc"] else None
         error_type = error.get("type")
         error_msg = error.get("msg", "")
         
-        # Detectar errores de validación del name (company o user)
+        # Detect name validation errors (company or user)
         if field_name == "name":
             if "string_too_short" in error_type:
                 return JSONResponse(
@@ -23,14 +23,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                     content={"detail": "NAME_TOO_LONG"}
                 )
         
-        # Detectar errores de validación del NIF
+        # Detect NIF validation errors
         if field_name == "nif":
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"detail": "INVALID_NIF_FORMAT"}
             )
         
-        # Detectar errores de validación del email
+        # Detect email validation errors
         if field_name == "email":
             if "string_too_long" in error_type:
                 return JSONResponse(
@@ -43,7 +43,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                     content={"detail": "INVALID_EMAIL_FORMAT"}
                 )
         
-        # Detectar errores de validación del username
+        # Detect username validation errors
         if field_name == "username":
             if "string_too_short" in error_type:
                 return JSONResponse(
@@ -71,7 +71,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                     content={"detail": "INVALID_USERNAME_FORMAT"}
                 )
         
-        # Detectar errores de validación del password
+        # Detect password validation errors
         if field_name == "password":
             if "string_too_short" in error_type:
                 return JSONResponse(
@@ -88,8 +88,22 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                     status_code=status.HTTP_400_BAD_REQUEST,
                     content={"detail": "INVALID_PASSWORD_FORMAT"}
                 )
+        
+        # Detect role validation errors
+        if field_name == "role":
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": "INVALID_ROLE"}
+            )
+        
+        # Detect branch_id validation errors
+        if field_name == "branch_id":
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": "INVALID_BRANCH_ID"}
+            )
     
-    # Para otros errores de validación, devolver la respuesta por defecto
+    # For other validation errors, return default response
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": exc.errors()}

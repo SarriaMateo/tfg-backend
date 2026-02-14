@@ -35,3 +35,59 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class UserCreate(BaseModel):
+    """Schema for creating a user (admin only)"""
+    name: str = Field(min_length=3, max_length=50)
+    username: str = Field(min_length=3, max_length=50)
+    password: str = Field(min_length=8, max_length=72)
+    role: UserRole = Field(default=UserRole.EMPLOYEE)
+    branch_id: Optional[int] = None
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        if " " in value:
+            raise ValueError("Username cannot contain spaces")
+        if not re.match(r"^[a-zA-Z0-9._-]+$", value):
+            raise ValueError("Username can only contain letters, numbers, dots, hyphens and underscores")
+        return value
+
+
+class UserUpdate(BaseModel):
+    """Schema for updating user (fields editable by non-admins)"""
+    name: Optional[str] = Field(None, min_length=3, max_length=50)
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    password: Optional[str] = Field(None, min_length=8, max_length=72)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        if " " in value:
+            raise ValueError("Username cannot contain spaces")
+        if not re.match(r"^[a-zA-Z0-9._-]+$", value):
+            raise ValueError("Username can only contain letters, numbers, dots, hyphens and underscores")
+        return value
+
+
+class UserUpdateAdmin(BaseModel):
+    """Schema for updating user (fields editable only by admins)"""
+    name: Optional[str] = Field(None, min_length=3, max_length=50)
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    password: Optional[str] = Field(None, min_length=8, max_length=72)
+    role: Optional[UserRole] = None
+    branch_id: Optional[int] = None
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        if " " in value:
+            raise ValueError("Username cannot contain spaces")
+        if not re.match(r"^[a-zA-Z0-9._-]+$", value):
+            raise ValueError("Username can only contain letters, numbers, dots, hyphens and underscores")
+        return value
