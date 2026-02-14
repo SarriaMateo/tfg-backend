@@ -27,3 +27,7 @@ class BranchRepository:
     def delete(db: Session, branch: Branch) -> None:
         db.delete(branch)
         db.flush()
+
+    @staticmethod
+    def commit(db: Session) -> None:
+        db.commit()
