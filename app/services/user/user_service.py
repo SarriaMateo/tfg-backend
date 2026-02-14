@@ -16,28 +16,19 @@ class UserService:
     def create_user(
         db: Session,
         user_data: UserCreate,
-        company_id: int,
         admin_user: User
     ) -> User:
         """
         Create a new user. Only admins can create users.
         Validations:
         - Username must be unique across the entire application
-        - User can only be created if in the same company as the admin
-        - If a branch is assigned, it must belong to the same company
+        - If a branch is assigned, it must belong to the admin's company
         """
         # Verify that the authenticated user is admin
         if admin_user.role != Role.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="INSUFFICIENT_ROLE"
-            )
-
-        # Verify that the admin is creating users in their own company
-        if admin_user.company_id != company_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="CANNOT_CREATE_USER_IN_DIFFERENT_COMPANY"
             )
 
         # Verify that the username is unique
@@ -55,7 +46,7 @@ class UserService:
                 detail="ADMIN_CANNOT_HAVE_BRANCH"
             )
 
-        # Validate that if a branch is assigned, it belongs to the same company
+        # Validate that if a branch is assigned, it belongs to the admin's company
         if user_data.branch_id:
             branch = BranchRepository.get_by_id(db, user_data.branch_id)
             if not branch:
@@ -63,7 +54,7 @@ class UserService:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="BRANCH_NOT_FOUND"
                 )
-            if branch.company_id != company_id:
+            if branch.company_id != admin_user.company_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="BRANCH_BELONGS_TO_DIFFERENT_COMPANY"
@@ -75,7 +66,7 @@ class UserService:
             username=user_data.username,
             hashed_password=hash_password(user_data.password),
             role=Role(user_data.role.value),
-            company_id=company_id,
+            company_id=admin_user.company_id,
             branch_id=user_data.branch_id
         )
 
@@ -120,12 +111,11 @@ class UserService:
     @staticmethod
     def get_users_by_company(
         db: Session,
-        company_id: int,
         admin_user: User
     ) -> list[User]:
         """
-        Get all users from a company.
-        Only admins from that company can view them.
+        Get all users from the admin's company.
+        Only admins can view all users.
         """
         if admin_user.role != Role.ADMIN:
             raise HTTPException(
@@ -133,13 +123,7 @@ class UserService:
                 detail="INSUFFICIENT_ROLE"
             )
 
-        if admin_user.company_id != company_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="COMPANY_ACCESS_DENIED"
-            )
-
-        return UserRepository.get_by_company_id(db, company_id)
+        return UserRepository.get_by_company_id(db, admin_user.company_id)
 
     @staticmethod
     def update_user(

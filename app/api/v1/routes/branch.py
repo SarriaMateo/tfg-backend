@@ -12,36 +12,38 @@ router = APIRouter(prefix="/branches", tags=["branches"])
 
 
 @router.post(
-    "/company/{company_id}",
+    "",
     response_model=BranchResponse,
     status_code=status.HTTP_201_CREATED
 )
 def create_branch(
-    company_id: int,
     branch_data: BranchCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("ADMIN"))
 ):
     """
-    Create a new branch.
-    Only admins can create branches in their company.
+    Create a new branch in the authenticated user's company.
+    Only admins can create branches.
     """
-    new_branch = BranchService.create_branch(db, branch_data, company_id, current_user)
+    new_branch = BranchService.create_branch(db, branch_data, current_user)
     BranchRepository.commit(db)
     return new_branch
 
 
 @router.get(
-    "/company/{company_id}",
+    "",
     response_model=list[BranchResponse],
     status_code=status.HTTP_200_OK
 )
 def get_branches_by_company(
-    company_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    branches = BranchService.get_branches_by_company(db, company_id, current_user)
+    """
+    Get branches from the authenticated user's company.
+    Admins see all branches. Employees see all or only their assigned branch.
+    """
+    branches = BranchService.get_branches_by_company(db, current_user)
     return branches
 
 

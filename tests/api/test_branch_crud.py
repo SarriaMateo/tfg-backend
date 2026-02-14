@@ -146,7 +146,7 @@ async def test_create_branch_success(client, admin_user):
     }
     
     response = await client.post(
-        f"/api/v1/branches/company/{admin_user.company_id}",
+        "/api/v1/branches",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -169,7 +169,7 @@ async def test_create_branch_non_admin(client, employee_no_branch):
     }
     
     response = await client.post(
-        f"/api/v1/branches/company/{employee_no_branch.company_id}",
+        "/api/v1/branches",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -180,7 +180,8 @@ async def test_create_branch_non_admin(client, employee_no_branch):
 
 @pytest.mark.asyncio
 async def test_create_branch_different_company(client, admin_user, other_company_admin):
-    """An admin cannot create branches in another company"""
+    """An admin cannot create branches in another company via authenticated company"""
+    # This test verifies that company isolation is enforced via authentication
     token = get_admin_token(other_company_admin)
     
     payload = {
@@ -189,13 +190,15 @@ async def test_create_branch_different_company(client, admin_user, other_company
     }
     
     response = await client.post(
-        f"/api/v1/branches/company/{admin_user.company_id}",
+        "/api/v1/branches",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
     
-    assert response.status_code == 403
-    assert response.json()["detail"] == "COMPANY_ACCESS_DENIED"
+    # Should succeed but be created in OTHER company's space
+    assert response.status_code == 201
+    data = response.json()
+    assert data["company_id"] == other_company_admin.company_id  # Not admin_user's company
 
 
 @pytest.mark.asyncio
@@ -209,7 +212,7 @@ async def test_create_branch_name_too_short(client, admin_user):
     }
     
     response = await client.post(
-        f"/api/v1/branches/company/{admin_user.company_id}",
+        "/api/v1/branches",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -228,7 +231,7 @@ async def test_create_branch_address_too_short(client, admin_user):
     }
     
     response = await client.post(
-        f"/api/v1/branches/company/{admin_user.company_id}",
+        "/api/v1/branches",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -331,7 +334,7 @@ async def test_get_branches_by_company_admin(client, admin_user, branch_empty, b
     token = get_admin_token(admin_user)
     
     response = await client.get(
-        f"/api/v1/branches/company/{admin_user.company_id}",
+        "/api/v1/branches",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -349,7 +352,7 @@ async def test_get_branches_by_company_employee_no_branch(client, employee_no_br
     token = get_token(employee_no_branch)
     
     response = await client.get(
-        f"/api/v1/branches/company/{employee_no_branch.company_id}",
+        "/api/v1/branches",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -365,7 +368,7 @@ async def test_get_branches_by_company_employee_with_branch(client, branch_with_
     token = get_token(employee)
     
     response = await client.get(
-        f"/api/v1/branches/company/{employee.company_id}",
+        "/api/v1/branches",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -441,7 +444,8 @@ async def test_update_branch_non_admin(client, employee_no_branch, branch_empty)
 
 @pytest.mark.asyncio
 async def test_update_branch_different_company(client, admin_user, branch_empty, other_company_admin):
-    """An admin cannot update branches from another company"""
+    """An admin cannot update branches from another company via authenticated company"""
+    # This test verifies that company isolation is enforced via authentication
     token = get_admin_token(other_company_admin)
     
     payload = {
@@ -454,6 +458,7 @@ async def test_update_branch_different_company(client, admin_user, branch_empty,
         headers={"Authorization": f"Bearer {token}"}
     )
     
+    # Should fail because branch belongs to admin_user's company, not other_company_admin's
     assert response.status_code == 403
     assert response.json()["detail"] == "COMPANY_ACCESS_DENIED"
 
@@ -522,7 +527,8 @@ async def test_delete_branch_non_admin(client, employee_no_branch, branch_empty)
 
 @pytest.mark.asyncio
 async def test_delete_branch_different_company(client, admin_user, branch_empty, other_company_admin):
-    """An admin cannot delete branches from another company"""
+    """An admin cannot delete branches from another company via authenticated company"""
+    # This test verifies that company isolation is enforced via authentication
     token = get_admin_token(other_company_admin)
     
     response = await client.delete(
@@ -530,6 +536,7 @@ async def test_delete_branch_different_company(client, admin_user, branch_empty,
         headers={"Authorization": f"Bearer {token}"}
     )
     
+    # Should fail because branch belongs to admin_user's company, not other_company_admin's
     assert response.status_code == 403
     assert response.json()["detail"] == "COMPANY_ACCESS_DENIED"
 

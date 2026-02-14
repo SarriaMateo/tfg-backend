@@ -123,7 +123,7 @@ async def test_create_user_success(client, admin_user):
     }
     
     response = await client.post(
-        f"/api/v1/users/company/{admin_user.company_id}",
+        "/api/v1/users",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -150,7 +150,7 @@ async def test_create_user_with_branch(client, admin_user, branch):
     }
     
     response = await client.post(
-        f"/api/v1/users/company/{admin_user.company_id}",
+        "/api/v1/users",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -173,7 +173,7 @@ async def test_create_user_duplicate_username(client, admin_user, employee_user)
     }
     
     response = await client.post(
-        f"/api/v1/users/company/{admin_user.company_id}",
+        "/api/v1/users",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -195,7 +195,7 @@ async def test_create_user_non_admin(client, employee_user):
     }
     
     response = await client.post(
-        f"/api/v1/users/company/{employee_user.company_id}",
+        "/api/v1/users",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -206,7 +206,8 @@ async def test_create_user_non_admin(client, employee_user):
 
 @pytest.mark.asyncio
 async def test_create_user_different_company(client, admin_user, other_company_admin):
-    """An admin cannot create users in another company"""
+    """An admin cannot create users in another company via authenticated company"""
+    # This test verifies that company isolation is enforced via authentication
     token = get_admin_token(other_company_admin)
     
     payload = {
@@ -217,13 +218,15 @@ async def test_create_user_different_company(client, admin_user, other_company_a
     }
     
     response = await client.post(
-        f"/api/v1/users/company/{admin_user.company_id}",
+        "/api/v1/users",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
     
-    assert response.status_code == 403
-    assert response.json()["detail"] == "CANNOT_CREATE_USER_IN_DIFFERENT_COMPANY"
+    # Should succeed but be created in OTHER company's space
+    assert response.status_code == 201
+    data = response.json()
+    assert data["company_id"] == other_company_admin.company_id  # Not admin_user's company
 
 
 @pytest.mark.asyncio
@@ -242,7 +245,7 @@ async def test_create_user_branch_different_company(client, admin_user, other_co
     
     # Try to create from another company
     response = await client.post(
-        f"/api/v1/users/company/{admin_user.company_id}",
+        "/api/v1/users",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -317,7 +320,7 @@ async def test_get_company_users_admin(client, admin_user, employee_user, db_ses
     token = get_admin_token(admin_user)
     
     response = await client.get(
-        f"/api/v1/users/company/{admin_user.company_id}/all",
+        "/api/v1/users",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -335,7 +338,7 @@ async def test_get_company_users_non_admin(client, employee_user):
     token = get_token(employee_user)
     
     response = await client.get(
-        f"/api/v1/users/company/{employee_user.company_id}/all",
+        "/api/v1/users",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -621,7 +624,7 @@ async def test_create_admin_with_branch(client, admin_user, branch):
     }
     
     response = await client.post(
-        f"/api/v1/users/company/{admin_user.company_id}",
+        "/api/v1/users",
         json=payload,
         headers={"Authorization": f"Bearer {token}"}
     )

@@ -15,7 +15,6 @@ class BranchService:
     def create_branch(
         db: Session,
         branch_data: BranchCreate,
-        company_id: int,
         admin_user: User
     ) -> Branch:
         if admin_user.role != Role.ADMIN:
@@ -24,16 +23,10 @@ class BranchService:
                 detail="INSUFFICIENT_ROLE"
             )
 
-        if admin_user.company_id != company_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="COMPANY_ACCESS_DENIED"
-            )
-
         branch = Branch(
             name=branch_data.name,
             address=branch_data.address,
-            company_id=company_id
+            company_id=admin_user.company_id
         )
 
         return BranchRepository.create(db, branch)
@@ -69,20 +62,13 @@ class BranchService:
     @staticmethod
     def get_branches_by_company(
         db: Session,
-        company_id: int,
         current_user: User
     ) -> list[Branch]:
-        if current_user.company_id != company_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="COMPANY_ACCESS_DENIED"
-            )
-
         if current_user.role == Role.ADMIN or current_user.branch_id is None:
-            return BranchRepository.get_by_company_id(db, company_id)
+            return BranchRepository.get_by_company_id(db, current_user.company_id)
 
         branch = BranchRepository.get_by_id(db, current_user.branch_id)
-        if not branch or branch.company_id != company_id:
+        if not branch or branch.company_id != current_user.company_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="BRANCH_NOT_FOUND"

@@ -12,12 +12,11 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.post(
-    "/company/{company_id}",
+    "",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED
 )
 def create_user(
-    company_id: int,
     user_data: UserCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("ADMIN"))
@@ -27,7 +26,7 @@ def create_user(
     Only admins can create users in their company.
     Username must be unique.
     """
-    new_user = UserService.create_user(db, user_data, company_id, current_user)
+    new_user = UserService.create_user(db, user_data, current_user)
     UserRepository.commit(db)
     return new_user
 
@@ -52,20 +51,19 @@ def get_user(
 
 
 @router.get(
-    "/company/{company_id}/all",
+    "",
     response_model=list[UserResponse],
     status_code=status.HTTP_200_OK
 )
 def get_company_users(
-    company_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("ADMIN"))
 ):
     """
-    Get all users from a company.
-    Only admins from that company can view them.
+    Get all users from the authenticated user's company.
+    Only admins can view all users.
     """
-    users = UserService.get_users_by_company(db, company_id, current_user)
+    users = UserService.get_users_by_company(db, current_user)
     return users
 
 
