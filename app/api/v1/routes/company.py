@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.registration import CompanyRegistrationRequest
 from app.schemas.company import CompanyRegistrationResponse, CompanyNameResponse
 from app.services.company.registration_service import CompanyRegistrationService
-from app.repositories.company_repository import CompanyRepository
+from app.services.company.company_service import CompanyService
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -32,10 +32,5 @@ def register_company(
     status_code=status.HTTP_200_OK
 )
 def get_company_name(company_id: int, db: Session = Depends(get_db)):
-    company = CompanyRepository.get_by_id(db, company_id)
-    if company is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="COMPANY_NOT_FOUND"
-        )
+    company = CompanyService.get_company_name(db, company_id)
     return company
