@@ -36,6 +36,10 @@ class UserRepository:
         ).count()
 
     @staticmethod
+    def count_by_branch_id(db: Session, branch_id: int) -> int:
+        return db.query(User).filter(User.branch_id == branch_id).count()
+
+    @staticmethod
     def update(db: Session, user: User) -> User:
         db.flush()
         return user
