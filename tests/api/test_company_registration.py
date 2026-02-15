@@ -20,7 +20,7 @@ async def test_register_company_success(client):
         }
     }
 
-    response = await client.post("/api/v1/companies/register", json=payload)
+    response = await client.post("/api/v1/company/register", json=payload)
 
     assert response.status_code == 201
 
@@ -47,8 +47,8 @@ async def test_register_company_duplicate_email(client):
         }
     }
 
-    await client.post("/api/v1/companies/register", json=payload)
-    response = await client.post("/api/v1/companies/register", json=payload)
+    await client.post("/api/v1/company/register", json=payload)
+    response = await client.post("/api/v1/company/register", json=payload)
 
     assert response.status_code == 409
     assert "COMPANY_EMAIL_ALREADY_EXISTS" in response.json()["detail"]
@@ -79,8 +79,8 @@ async def test_register_company_duplicate_username(client):
         }
     }
 
-    await client.post("/api/v1/companies/register", json=payload1)
-    response = await client.post("/api/v1/companies/register", json=payload2)
+    await client.post("/api/v1/company/register", json=payload1)
+    response = await client.post("/api/v1/company/register", json=payload2)
 
     assert response.status_code == 409
     assert "USERNAME_ALREADY_EXISTS" in response.json()["detail"]
@@ -99,7 +99,7 @@ async def test_register_company_invalid_email(client):
         }
     }
 
-    response = await client.post("/api/v1/companies/register", json=payload)
+    response = await client.post("/api/v1/company/register", json=payload)
 
     assert response.status_code == 400
     assert "email" in response.json()["detail"].lower()
@@ -119,7 +119,7 @@ async def test_password_is_not_returned(client):
         }
     }
 
-    response = await client.post("/api/v1/companies/register", json=payload)
+    response = await client.post("/api/v1/company/register", json=payload)
 
     data = response.json()
     assert "password" not in data["user"]
