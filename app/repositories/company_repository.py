@@ -20,3 +20,12 @@ class CompanyRepository:
     def create(db: Session, company: Company) -> Company:
         db.add(company)
         return company
+
+    @staticmethod
+    def update(db: Session, company: Company) -> Company:
+        db.flush()
+        return company
+
+    @staticmethod
+    def commit(db: Session) -> None:
+        db.commit()
