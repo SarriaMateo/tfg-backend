@@ -13,6 +13,13 @@ class BranchRepository:
         return db.query(Branch).filter(Branch.company_id == company_id).all()
 
     @staticmethod
+    def get_by_name_and_company(db: Session, name: str, company_id: int) -> Branch:
+        return db.query(Branch).filter(
+            Branch.name == name,
+            Branch.company_id == company_id
+        ).first()
+
+    @staticmethod
     def create(db: Session, branch: Branch) -> Branch:
         db.add(branch)
         db.flush()

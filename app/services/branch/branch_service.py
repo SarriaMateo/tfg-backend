@@ -23,6 +23,16 @@ class BranchService:
                 detail="INSUFFICIENT_ROLE"
             )
 
+        # Verify branch name is unique within company
+        existing_branch = BranchRepository.get_by_name_and_company(
+            db, branch_data.name, admin_user.company_id
+        )
+        if existing_branch:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="BRANCH_NAME_ALREADY_EXISTS"
+            )
+
         branch = Branch(
             name=branch_data.name,
             address=branch_data.address,
@@ -101,6 +111,17 @@ class BranchService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="COMPANY_ACCESS_DENIED"
             )
+
+        # Verify branch name is unique within company (if changing name)
+        if branch_data.name is not None and branch_data.name != branch.name:
+            existing_branch = BranchRepository.get_by_name_and_company(
+                db, branch_data.name, admin_user.company_id
+            )
+            if existing_branch:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="BRANCH_NAME_ALREADY_EXISTS"
+                )
 
         if branch_data.name is not None:
             branch.name = branch_data.name

@@ -239,6 +239,26 @@ async def test_create_branch_address_too_short(client, admin_user):
     assert response.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_create_branch_duplicate_name(client, admin_user, branch_empty):
+    """Cannot create two branches with the same name in the same company"""
+    token = get_admin_token(admin_user)
+    
+    payload = {
+        "name": "Empty Branch",  # Same name as branch_empty
+        "address": "Different Address 999"
+    }
+    
+    response = await client.post(
+        "/api/v1/branches",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 409
+    assert response.json()["detail"] == "BRANCH_NAME_ALREADY_EXISTS"
+
+
 # ==================== READ TESTS ====================
 
 @pytest.mark.asyncio
@@ -440,6 +460,25 @@ async def test_update_branch_non_admin(client, employee_no_branch, branch_empty)
     
     assert response.status_code == 403
     assert response.json()["detail"] == "INSUFFICIENT_ROLE"
+
+
+@pytest.mark.asyncio
+async def test_update_branch_duplicate_name(client, admin_user, branch_empty, branch_with_employee):
+    """Cannot update branch to have the same name as another branch in the same company"""
+    token = get_admin_token(admin_user)
+    
+    payload = {
+        "name": "Branch With Employee"  # Same name as branch_with_employee
+    }
+    
+    response = await client.put(
+        f"/api/v1/branches/{branch_empty.id}",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 409
+    assert response.json()["detail"] == "BRANCH_NAME_ALREADY_EXISTS"
 
 
 @pytest.mark.asyncio
