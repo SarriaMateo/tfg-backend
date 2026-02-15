@@ -3,11 +3,14 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.schemas.registration import CompanyRegistrationRequest
-from app.schemas.company import CompanyRegistrationResponse, CompanyNameResponse
+from app.schemas.company import CompanyRegistrationResponse, CompanyResponse, CompanyUpdate
 from app.services.company.registration_service import CompanyRegistrationService
 from app.services.company.company_service import CompanyService
+from app.core.security import get_current_user, require_roles
+from app.db.models.user import User
+from app.repositories.company_repository import CompanyRepository
 
-router = APIRouter(prefix="/companies", tags=["companies"])
+router = APIRouter(prefix="/company", tags=["companies"])
 
 
 @router.post(
@@ -27,10 +30,33 @@ def register_company(
 
 
 @router.get(
-    "/{company_id}",
-    response_model=CompanyNameResponse,
+    "",
+    response_model=CompanyResponse,
     status_code=status.HTTP_200_OK
 )
-def get_company_name(company_id: int, db: Session = Depends(get_db)):
-    company = CompanyService.get_company_name(db, company_id)
+def get_company(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    company = CompanyService.get_company_for_user(db, current_user)
     return company
+
+
+@router.put(
+    "",
+    response_model=CompanyResponse,
+    status_code=status.HTTP_200_OK
+)
+def update_company(
+    company_data: CompanyUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("ADMIN"))
+):
+    updated_company = CompanyService.update_company(
+        db,
+        current_user.company_id,
+        company_data,
+        current_user
+    )
+    CompanyRepository.commit(db)
+    return updated_company
