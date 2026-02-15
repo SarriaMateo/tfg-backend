@@ -19,6 +19,22 @@ class CompanyCreate(BaseModel):
         return value
 
 
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=3, max_length=50)
+    email: Optional[EmailStr] = Field(None, max_length=50)
+    nif: Optional[str] = None
+
+    @field_validator("nif")
+    @classmethod
+    def validate_nif(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or not value.strip():
+            return None
+        value = value.upper().strip()
+        if not re.match(r"^[A-Z]\d{8}$", value):
+            raise ValueError("Invalid NIF format")
+        return value
+
+
 class CompanyResponse(BaseModel):
     id: int
     name: str
