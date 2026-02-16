@@ -201,3 +201,49 @@ async def test_update_company_isolated_by_token(client, admin_user, other_compan
     data = response.json()
     assert data["id"] == other_company_admin.company_id
     assert data["name"] == "Other Updated"
+
+
+@pytest.mark.asyncio
+async def test_update_company_set_nif_to_null(client, admin_user, db_session):
+    token = get_token(admin_user)
+
+    payload = {
+        "nif": None
+    }
+
+    response = await client.put(
+        "/api/v1/company",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["nif"] is None
+
+    # Verify in DB
+    db_session.refresh(db_session.get(Company, admin_user.company_id))
+    company = db_session.get(Company, admin_user.company_id)
+    assert company.nif is None
+
+
+@pytest.mark.asyncio
+async def test_update_company_without_nif_keeps_current(client, admin_user, db_session):
+    token = get_token(admin_user)
+
+    # Update only name, not sending nif
+    payload = {
+        "name": "Name Only Update"
+    }
+
+    response = await client.put(
+        "/api/v1/company",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Name Only Update"
+    assert data["nif"] == "B12345678"  # Should keep original NIF
+
