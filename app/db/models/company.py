@@ -10,6 +10,8 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.db.models.branch import Branch
     from app.db.models.user import User
+    from app.db.models.item import Item
+    from app.db.models.category import Category
 
 class Company(Base):
     __tablename__ = "companies"
@@ -25,6 +27,16 @@ class Company(Base):
     )
 
     branches: Mapped[list["Branch"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan"
+    )
+
+    items: Mapped[list["Item"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan"
+    )
+
+    categories: Mapped[list["Category"]] = relationship(
         back_populates="company",
         cascade="all, delete-orphan"
     )
