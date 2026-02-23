@@ -29,7 +29,7 @@ class Item(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     sku: Mapped[str] = mapped_column(String(12), nullable=False)
     unit: Mapped[Unit] = mapped_column(
-        SAEnum(Unit, name="item_unit"),
+        SAEnum(Unit, name="item_unit", native_enum=False),
         nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
