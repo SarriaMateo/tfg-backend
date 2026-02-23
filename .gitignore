@@ -5,3 +5,4 @@ __pycache__/
 .idea/
 .vscode/
 *.DS_Store
+app/C4_ARCHITECTURE_COMPONENT_BACKEND.md
