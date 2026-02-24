@@ -1,0 +1,82 @@
+from pydantic import BaseModel, Field, field_validator
+from enum import Enum
+from typing import Optional
+from datetime import datetime
+import re
+
+
+class ItemUnit(str, Enum):
+    UNIT = "ud"
+    KILOGRAM = "kg"
+    GRAM = "g"
+    LITER = "l"
+    MILLILITER = "ml"
+    METER = "m"
+    BOX = "box"
+    PACK = "pack"
+
+
+class ItemCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    sku: str = Field(min_length=1, max_length=12)
+    unit: ItemUnit
+    description: Optional[str] = Field(None, max_length=500)
+    price: Optional[float] = Field(None, ge=0)
+    brand: Optional[str] = Field(None, max_length=100)
+    image_url: Optional[str] = Field(None, max_length=255)
+
+    @field_validator("sku")
+    @classmethod
+    def validate_sku(cls, value: str) -> str:
+        if not re.match(r"^[a-zA-Z0-9]+$", value):
+            raise ValueError("SKU must be alphanumeric")
+        return value
+
+    @field_validator("price")
+    @classmethod
+    def validate_price(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and value < 0:
+            raise ValueError("Price cannot be negative")
+        return value
+
+
+class ItemUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    sku: Optional[str] = Field(None, min_length=1, max_length=12)
+    unit: Optional[ItemUnit] = None
+    description: Optional[str] = Field(None, max_length=500)
+    price: Optional[float] = Field(None, ge=0)
+    brand: Optional[str] = Field(None, max_length=100)
+    image_url: Optional[str] = Field(None, max_length=255)
+    is_active: Optional[bool] = None
+
+    @field_validator("sku")
+    @classmethod
+    def validate_sku(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not re.match(r"^[a-zA-Z0-9]+$", value):
+            raise ValueError("SKU must be alphanumeric")
+        return value
+
+    @field_validator("price")
+    @classmethod
+    def validate_price(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and value < 0:
+            raise ValueError("Price cannot be negative")
+        return value
+
+
+class ItemResponse(BaseModel):
+    id: int
+    name: str
+    sku: str
+    unit: ItemUnit
+    created_at: datetime
+    is_active: bool
+    description: Optional[str]
+    price: Optional[float]
+    brand: Optional[str]
+    image_url: Optional[str]
+    company_id: int
+
+    class Config:
+        from_attributes = True
