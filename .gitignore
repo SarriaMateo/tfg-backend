@@ -6,3 +6,4 @@ __pycache__/
 .vscode/
 *.DS_Store
 app/C4_ARCHITECTURE_COMPONENT_BACKEND.md
+/media/

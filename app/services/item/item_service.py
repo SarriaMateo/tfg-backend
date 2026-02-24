@@ -8,7 +8,7 @@ from app.db.models.category import Category
 from app.repositories.item_repository import ItemRepository
 from app.repositories.category_repository import CategoryRepository
 from app.schemas.item import ItemCreate, ItemUpdate
-from app.core.file_handler import FileHandler
+from app.core.file_handler import ItemImageHandler
 
 
 class ItemService:
@@ -47,7 +47,7 @@ class ItemService:
         # Handle image upload if provided
         image_url = None
         if image_file and image_filename:
-            image_url = FileHandler.save_image(image_file, image_filename)
+            image_url = ItemImageHandler.save_image(image_file, image_filename, current_user.company_id)
 
         item = Item(
             name=item_data.name,
@@ -139,9 +139,9 @@ class ItemService:
         if image_file and image_filename:
             # Delete old image if it exists
             if item.image_url:
-                FileHandler.delete_image(item.image_url)
+                ItemImageHandler.delete_image(item.image_url)
             # Save new image
-            item.image_url = FileHandler.save_image(image_file, image_filename)
+            item.image_url = ItemImageHandler.save_image(image_file, image_filename, current_user.company_id)
 
         # Update only provided fields
         if item_data.name is not None:
@@ -196,7 +196,7 @@ class ItemService:
 
         # Delete image if it exists
         if item.image_url:
-            FileHandler.delete_image(item.image_url)
+            ItemImageHandler.delete_image(item.image_url)
 
         ItemRepository.delete(db, item)
         ItemRepository.commit(db)
