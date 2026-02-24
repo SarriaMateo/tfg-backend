@@ -1,0 +1,255 @@
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+from typing import Optional
+
+from app.db.models.item import Item, Unit
+from app.db.models.user import User, Role
+from app.db.models.category import Category
+from app.repositories.item_repository import ItemRepository
+from app.repositories.category_repository import CategoryRepository
+from app.schemas.item import ItemCreate, ItemUpdate
+from app.core.file_handler import FileHandler
+
+
+class ItemService:
+    """Business logic service for items"""
+
+    @staticmethod
+    def create_item(
+        db: Session,
+        item_data: ItemCreate,
+        current_user: User,
+        image_file: Optional[bytes] = None,
+        image_filename: Optional[str] = None
+    ) -> Item:
+        """
+        Create a new item. Only MANAGER and ADMIN can create items.
+        Validations:
+        - User must be MANAGER or ADMIN
+        - SKU must be unique within the company
+        """
+        if current_user.role not in (Role.MANAGER, Role.ADMIN):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="INSUFFICIENT_ROLE"
+            )
+
+        # Verify SKU is unique within the company
+        existing_item = ItemRepository.get_by_sku_and_company(
+            db, item_data.sku, current_user.company_id
+        )
+        if existing_item:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="SKU_ALREADY_EXISTS"
+            )
+
+        # Handle image upload if provided
+        image_url = None
+        if image_file and image_filename:
+            image_url = FileHandler.save_image(image_file, image_filename)
+
+        item = Item(
+            name=item_data.name,
+            sku=item_data.sku,
+            unit=Unit(item_data.unit.value),
+            description=item_data.description,
+            price=item_data.price,
+            brand=item_data.brand,
+            image_url=image_url,
+            company_id=current_user.company_id
+        )
+
+        ItemRepository.create(db, item)
+        ItemRepository.commit(db)
+        return item
+
+    @staticmethod
+    def get_item(
+        db: Session,
+        item_id: int,
+        current_user: User
+    ) -> Item:
+        """
+        Get an item. All users can view items from their company.
+        """
+        item = ItemRepository.get_by_id(db, item_id)
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="ITEM_NOT_FOUND"
+            )
+
+        # Verify item belongs to user's company
+        if item.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="ITEM_NOT_FOUND"
+            )
+
+        return item
+
+    @staticmethod
+    def update_item(
+        db: Session,
+        item_id: int,
+        item_data: ItemUpdate,
+        current_user: User,
+        image_file: Optional[bytes] = None,
+        image_filename: Optional[str] = None
+    ) -> Item:
+        """
+        Update an item. Only MANAGER and ADMIN can update items.
+        Validations:
+        - User must be MANAGER or ADMIN
+        - Item must belong to user's company
+        - If SKU is changed, it must remain unique within the company
+        """
+        if current_user.role not in (Role.MANAGER, Role.ADMIN):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="INSUFFICIENT_ROLE"
+            )
+
+        item = ItemRepository.get_by_id(db, item_id)
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="ITEM_NOT_FOUND"
+            )
+
+        if item.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="ITEM_NOT_FOUND"
+            )
+
+        # Validate SKU uniqueness if it's being changed
+        if item_data.sku is not None and item_data.sku != item.sku:
+            existing_item = ItemRepository.get_by_sku_and_company(
+                db, item_data.sku, current_user.company_id
+            )
+            if existing_item:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="SKU_ALREADY_EXISTS"
+                )
+
+        # Handle image update if new image is provided
+        if image_file and image_filename:
+            # Delete old image if it exists
+            if item.image_url:
+                FileHandler.delete_image(item.image_url)
+            # Save new image
+            item.image_url = FileHandler.save_image(image_file, image_filename)
+
+        # Update only provided fields
+        if item_data.name is not None:
+            item.name = item_data.name
+        if item_data.sku is not None:
+            item.sku = item_data.sku
+        if item_data.unit is not None:
+            item.unit = Unit(item_data.unit.value)
+        if item_data.description is not None:
+            item.description = item_data.description
+        if item_data.price is not None:
+            item.price = item_data.price
+        if item_data.brand is not None:
+            item.brand = item_data.brand
+        if item_data.is_active is not None:
+            item.is_active = item_data.is_active
+
+        ItemRepository.update(db, item)
+        ItemRepository.commit(db)
+        return item
+
+    @staticmethod
+    def delete_item(
+        db: Session,
+        item_id: int,
+        current_user: User
+    ) -> None:
+        """
+        Delete an item. Only ADMIN can delete items.
+        Validations:
+        - User must be ADMIN
+        - Item must belong to user's company
+        """
+        if current_user.role != Role.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="INSUFFICIENT_ROLE"
+            )
+
+        item = ItemRepository.get_by_id(db, item_id)
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="ITEM_NOT_FOUND"
+            )
+
+        if item.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="ITEM_NOT_FOUND"
+            )
+
+        # Delete image if it exists
+        if item.image_url:
+            FileHandler.delete_image(item.image_url)
+
+        ItemRepository.delete(db, item)
+        ItemRepository.commit(db)
+
+    @staticmethod
+    def assign_categories(
+        db: Session,
+        item_id: int,
+        category_ids: list[int],
+        current_user: User
+    ) -> Item:
+        """
+        Assign categories to an item. Only MANAGER and ADMIN can assign categories.
+        Validations:
+        - User must be MANAGER or ADMIN
+        - Item must belong to user's company
+        - All categories must belong to the same company as the item
+        """
+        if current_user.role not in (Role.MANAGER, Role.ADMIN):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="INSUFFICIENT_ROLE"
+            )
+
+        item = ItemRepository.get_by_id(db, item_id)
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="ITEM_NOT_FOUND"
+            )
+
+        if item.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="ITEM_NOT_FOUND"
+            )
+
+        # Get all categories and verify they belong to the same company
+        categories = []
+        for category_id in category_ids:
+            category = CategoryRepository.get_by_id_and_company(
+                db, category_id, current_user.company_id
+            )
+            if not category:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="CATEGORY_NOT_FOUND"
+                )
+            categories.append(category)
+
+        # Assign categories
+        item.categories = categories
+
+        ItemRepository.update(db, item)
+        ItemRepository.commit(db)
+        return item
