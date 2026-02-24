@@ -374,3 +374,38 @@ class TestItemServiceAssignCategories:
         # Categories should be empty
         assert item.categories == []
         mock_repo.update.assert_called_once()
+
+
+class TestItemServiceGetCategories:
+    """Tests for getting item categories"""
+
+    @patch("app.services.item.item_service.ItemRepository")
+    def test_get_item_categories_with_categories(self, mock_repo, mock_db, admin_user):
+        """Get categories from item that has them"""
+        category1 = Mock(spec=Category)
+        category1.id = 1
+        category2 = Mock(spec=Category)
+        category2.id = 2
+        
+        item = Mock(spec=Item)
+        item.id = 1
+        item.company_id = admin_user.company_id
+        item.categories = [category1, category2]
+        mock_repo.get_by_id.return_value = item
+
+        result = ItemService.get_item(mock_db, 1, admin_user)
+
+        assert result.categories == [category1, category2]
+
+    @patch("app.services.item.item_service.ItemRepository")
+    def test_get_item_categories_empty(self, mock_repo, mock_db, admin_user):
+        """Get categories from item with no categories"""
+        item = Mock(spec=Item)
+        item.id = 1
+        item.company_id = admin_user.company_id
+        item.categories = []
+        mock_repo.get_by_id.return_value = item
+
+        result = ItemService.get_item(mock_db, 1, admin_user)
+
+        assert result.categories == []

@@ -31,6 +31,22 @@ def create_category(
 
 
 @router.get(
+    "",
+    response_model=list[CategoryResponse],
+    status_code=status.HTTP_200_OK
+)
+def get_company_categories(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all categories in the user's company. All users can view all categories.
+    """
+    categories = CategoryService.get_categories_by_company(db, current_user)
+    return categories
+
+
+@router.get(
     "/{category_id}",
     response_model=CategoryResponse,
     status_code=status.HTTP_200_OK

@@ -39,6 +39,17 @@ class CategoryService:
         return category
 
     @staticmethod
+    def get_categories_by_company(
+        db: Session,
+        current_user: User
+    ) -> list[Category]:
+        """
+        Get all categories for the user's company.
+        All users can view categories from their company.
+        """
+        return CategoryRepository.get_by_company_id(db, current_user.company_id)
+
+    @staticmethod
     def get_category(
         db: Session,
         category_id: int,

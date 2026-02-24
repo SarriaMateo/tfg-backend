@@ -122,6 +122,44 @@ class TestCategoryServiceCreate:
         mock_repo.create.assert_called_once()
 
 
+class TestCategoryServiceGetByCompany:
+    """Tests for CategoryService.get_categories_by_company"""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Mock database session"""
+        return Mock()
+
+    @patch("app.services.category.category_service.CategoryRepository")
+    def test_get_categories_by_company_success(self, mock_repo, mock_db, admin_user):
+        """Get all categories for a company"""
+        category1 = Mock(spec=Category)
+        category1.id = 1
+        category1.name = "Electronics"
+        category2 = Mock(spec=Category)
+        category2.id = 2
+        category2.name = "Books"
+        
+        mock_repo.get_by_company_id.return_value = [category1, category2]
+
+        result = CategoryService.get_categories_by_company(mock_db, admin_user)
+
+        assert len(result) == 2
+        assert result[0].name == "Electronics"
+        assert result[1].name == "Books"
+        mock_repo.get_by_company_id.assert_called_once_with(mock_db, admin_user.company_id)
+
+    @patch("app.services.category.category_service.CategoryRepository")
+    def test_get_categories_by_company_empty(self, mock_repo, mock_db, admin_user):
+        """Get categories when company has none"""
+        mock_repo.get_by_company_id.return_value = []
+
+        result = CategoryService.get_categories_by_company(mock_db, admin_user)
+
+        assert result == []
+        mock_repo.get_by_company_id.assert_called_once_with(mock_db, admin_user.company_id)
+
+
 class TestCategoryServiceGet:
     """Tests for CategoryService.get_category"""
 

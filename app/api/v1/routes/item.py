@@ -4,6 +4,7 @@ from typing import Optional
 
 from app.db.session import get_db
 from app.schemas.item import ItemCreate, ItemUpdate, ItemResponse
+from app.schemas.category import CategoryResponse
 from app.core.security import get_current_user, require_roles
 from app.db.models.user import User
 from app.services.item.item_service import ItemService
@@ -158,3 +159,20 @@ def assign_categories(
     item = ItemService.assign_categories(db, item_id, category_ids, current_user)
     ItemRepository.commit(db)
     return item
+
+
+@router.get(
+    "/{item_id}/categories",
+    response_model=list[CategoryResponse],
+    status_code=status.HTTP_200_OK
+)
+def get_item_categories(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all categories assigned to an item. All users can view categories from items in their company.
+    """
+    item = ItemService.get_item(db, item_id, current_user)
+    return item.categories
