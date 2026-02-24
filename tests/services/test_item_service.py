@@ -359,3 +359,18 @@ class TestItemServiceAssignCategories:
 
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "CATEGORY_NOT_FOUND"
+
+    @patch("app.services.item.item_service.ItemRepository")
+    def test_assign_categories_empty_list(self, mock_repo, mock_db, admin_user):
+        """Empty list removes all categories from item"""
+        item = Mock(spec=Item)
+        item.id = 1
+        item.company_id = admin_user.company_id
+        item.categories = [Mock(spec=Category), Mock(spec=Category)]  # Has categories
+        mock_repo.get_by_id.return_value = item
+
+        ItemService.assign_categories(mock_db, 1, [], admin_user)
+
+        # Categories should be empty
+        assert item.categories == []
+        mock_repo.update.assert_called_once()

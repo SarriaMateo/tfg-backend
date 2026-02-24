@@ -210,10 +210,13 @@ class ItemService:
     ) -> Item:
         """
         Assign categories to an item. Only MANAGER and ADMIN can assign categories.
+        
         Validations:
         - User must be MANAGER or ADMIN
         - Item must belong to user's company
         - All categories must belong to the same company as the item
+        
+        If category_ids is empty, all categories will be removed from the item.
         """
         if current_user.role not in (Role.MANAGER, Role.ADMIN):
             raise HTTPException(
@@ -235,6 +238,7 @@ class ItemService:
             )
 
         # Get all categories and verify they belong to the same company
+        # If category_ids is empty, categories will be empty list (removes all)
         categories = []
         for category_id in category_ids:
             category = CategoryRepository.get_by_id_and_company(
@@ -247,7 +251,7 @@ class ItemService:
                 )
             categories.append(category)
 
-        # Assign categories
+        # Assign/replace categories (empty list removes all)
         item.categories = categories
 
         ItemRepository.update(db, item)

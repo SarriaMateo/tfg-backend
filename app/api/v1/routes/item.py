@@ -151,6 +151,9 @@ def assign_categories(
 ):
     """
     Assign categories to an item. Only MANAGER and ADMIN can assign categories.
+    Replaces existing categories completely.
+    
+    Pass an empty array [] to remove all categories from the item.
     """
     item = ItemService.assign_categories(db, item_id, category_ids, current_user)
     ItemRepository.commit(db)
