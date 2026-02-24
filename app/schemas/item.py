@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 from typing import Optional
 from datetime import datetime
+from decimal import Decimal
 import re
 
 
@@ -21,7 +22,7 @@ class ItemCreate(BaseModel):
     sku: str = Field(min_length=1, max_length=12)
     unit: ItemUnit
     description: Optional[str] = Field(None, max_length=500)
-    price: Optional[float] = Field(None, ge=0)
+    price: Optional[Decimal] = Field(None, ge=0, max_digits=10, decimal_places=2)
     brand: Optional[str] = Field(None, max_length=100)
     image_url: Optional[str] = Field(None, max_length=255)
 
@@ -34,7 +35,7 @@ class ItemCreate(BaseModel):
 
     @field_validator("price")
     @classmethod
-    def validate_price(cls, value: Optional[float]) -> Optional[float]:
+    def validate_price(cls, value: Optional[Decimal]) -> Optional[Decimal]:
         if value is not None and value < 0:
             raise ValueError("Price cannot be negative")
         return value
@@ -45,7 +46,7 @@ class ItemUpdate(BaseModel):
     sku: Optional[str] = Field(None, min_length=1, max_length=12)
     unit: Optional[ItemUnit] = None
     description: Optional[str] = Field(None, max_length=500)
-    price: Optional[float] = Field(None, ge=0)
+    price: Optional[Decimal] = Field(None, ge=0, max_digits=10, decimal_places=2)
     brand: Optional[str] = Field(None, max_length=100)
     image_url: Optional[str] = Field(None, max_length=255)
     is_active: Optional[bool] = None
@@ -59,7 +60,7 @@ class ItemUpdate(BaseModel):
 
     @field_validator("price")
     @classmethod
-    def validate_price(cls, value: Optional[float]) -> Optional[float]:
+    def validate_price(cls, value: Optional[Decimal]) -> Optional[Decimal]:
         if value is not None and value < 0:
             raise ValueError("Price cannot be negative")
         return value
@@ -73,7 +74,7 @@ class ItemResponse(BaseModel):
     created_at: datetime
     is_active: bool
     description: Optional[str]
-    price: Optional[float]
+    price: Optional[Decimal]
     brand: Optional[str]
     image_url: Optional[str]
     company_id: int

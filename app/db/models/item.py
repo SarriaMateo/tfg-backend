@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from enum import Enum as PyEnum
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Integer, String, Float, Boolean, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy import Integer, String, Boolean, DateTime, ForeignKey, Enum as SAEnum, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -35,7 +36,7 @@ class Item(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     brand: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     company_id: Mapped[int] = mapped_column(

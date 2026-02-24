@@ -50,7 +50,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column('description', sa.String(length=500), nullable=True),
-        sa.Column('price', sa.Float(), nullable=True),
+        sa.Column('price', sa.Numeric(10, 2), nullable=True),
         sa.Column('brand', sa.String(length=100), nullable=True),
         sa.Column('image_url', sa.String(length=255), nullable=True),
         sa.Column('company_id', sa.Integer(), nullable=False),
