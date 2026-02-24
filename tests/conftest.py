@@ -13,6 +13,14 @@ from app.main import app
 from app.db.base import Base
 from app.db.session import get_db
 
+# Import all models to register them with Base.metadata
+from app.db.models.company import Company
+from app.db.models.user import User
+from app.db.models.branch import Branch
+from app.db.models.item import Item
+from app.db.models.category import Category
+from app.db.models.association import item_categories
+
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite+pysqlite:///:memory:"
 
 engine = create_engine(

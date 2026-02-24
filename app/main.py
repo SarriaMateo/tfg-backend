@@ -16,6 +16,14 @@ from app.api.v1.routes.user import router as user_router
 from app.api.v1.routes.item import router as item_router
 from app.api.v1.routes.category import router as category_router
 
+# Import all models to register them with Base.metadata
+from app.db.models.company import Company
+from app.db.models.user import User
+from app.db.models.branch import Branch
+from app.db.models.item import Item
+from app.db.models.category import Category
+from app.db.models.association import item_categories
+
 app = FastAPI(title=settings.app_name)
 
 # Registrar exception handlers
