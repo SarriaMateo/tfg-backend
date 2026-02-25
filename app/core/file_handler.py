@@ -56,9 +56,9 @@ class ItemImageHandler:
     def save_image(cls, file_content: bytes, filename: str, company_id: int) -> str:
         """
         Save image file for an item and return the relative URL path.
-        Structure: /media/items/{company_id}/{uuid}.ext
+        Structure: items/{company_id}/{uuid}.ext
         
-        Returns: Relative path to store in database (e.g., "/media/items/1/abc123.jpg")
+        Returns: Relative path to store in database (e.g., "items/1/abc123.jpg")
         """
         cls._ensure_dir()
         cls.validate_image(file_content, filename)
@@ -77,7 +77,8 @@ class ItemImageHandler:
             f.write(file_content)
 
         # Return relative URL path for database storage
-        relative_path = f"/media/items/{company_id}/{unique_filename}"
+        # Remove /media prefix since MEDIA_ROOT will be prepended when reading
+        relative_path = f"items/{company_id}/{unique_filename}"
         return relative_path
 
     @classmethod

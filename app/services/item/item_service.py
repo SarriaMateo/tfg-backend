@@ -1,6 +1,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Optional
+from pathlib import Path
 
 from app.db.models.item import Item, Unit
 from app.db.models.user import User, Role
@@ -96,7 +97,8 @@ class ItemService:
         item_data: ItemUpdate,
         current_user: User,
         image_file: Optional[bytes] = None,
-        image_filename: Optional[str] = None
+        image_filename: Optional[str] = None,
+        delete_image: bool = False
     ) -> Item:
         """
         Update an item. Only MANAGER and ADMIN can update items.
@@ -145,6 +147,11 @@ class ItemService:
                 ItemImageHandler.delete_image(item.image_url)
             # Save new image
             item.image_url = ItemImageHandler.save_image(image_file, image_filename, current_user.company_id)
+        # Handle explicit image deletion (empty image field sent)
+        elif delete_image:
+            if item.image_url:
+                ItemImageHandler.delete_image(item.image_url)
+            item.image_url = None
         # Only handle image_url from JSON if it was explicitly sent and no file was uploaded
         elif "image_url" in sent_fields:
             # If image_url is being set to None, delete the old image
@@ -269,3 +276,46 @@ class ItemService:
         ItemRepository.update(db, item)
         ItemRepository.commit(db)
         return item
+    @staticmethod
+    def get_item_image(
+        db: Session,
+        item_id: int,
+        current_user: User
+    ) -> tuple[Path, str]:
+        """
+        Get image file path for an item with security validation.
+        Returns a tuple of (file_path: Path, media_type: str)
+        
+        Validations:
+        - User must be authenticated
+        - Item must belong to user's company
+        - Item must have an image
+        - Image file must exist on filesystem
+        """
+        # Verify user has access to this item (must be from same company)
+        item = ItemService.get_item(db, item_id, current_user)
+        
+        # Check if item has an image
+        if not item.image_url:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="IMAGE_NOT_FOUND"
+            )
+        
+        # Get absolute path
+        image_path = ItemImageHandler.get_absolute_path(item.image_url)
+        
+        # Verify file exists
+        if not image_path or not image_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="IMAGE_NOT_FOUND"
+            )
+        
+        # Determine media type based on file extension
+        import mimetypes
+        media_type, _ = mimetypes.guess_type(str(image_path))
+        if not media_type:
+            media_type = "application/octet-stream"
+        
+        return image_path, media_type

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, UploadFile, File, status, Form, Query, Request
+from fastapi import APIRouter, Depends, UploadFile, File, status, Form, Query, Request, HTTPException
+from starlette.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -127,15 +128,23 @@ async def update_item(
     
     item_data = ItemUpdate(**update_data)
 
-    # Read image content if provided
+    # Handle image: detect if image field was explicitly sent
     image_file = None
     image_filename = None
-    if image:
-        image_file = await image.read()
-        image_filename = image.filename
+    delete_image = False
+    
+    # If 'image' field was sent in the request
+    if 'image' in form_data:
+        if image:
+            # Image field sent with a file
+            image_file = await image.read()
+            image_filename = image.filename
+        else:
+            # Image field sent but empty - delete the current image
+            delete_image = True
 
     updated_item = ItemService.update_item(
-        db, item_id, item_data, current_user, image_file, image_filename
+        db, item_id, item_data, current_user, image_file, image_filename, delete_image
     )
     ItemRepository.commit(db)
     return updated_item
@@ -195,3 +204,21 @@ def get_item_categories(
     """
     item = ItemService.get_item(db, item_id, current_user)
     return item.categories
+
+
+@router.get(
+    "/{item_id}/image",
+    status_code=status.HTTP_200_OK
+)
+def get_item_image(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get image for an item. Only users from the item's company can access.
+    Requires authentication and company ownership verification.
+    Returns the image file if it exists, 404 otherwise.
+    """
+    image_path, media_type = ItemService.get_item_image(db, item_id, current_user)
+    return FileResponse(path=image_path, media_type=media_type)
