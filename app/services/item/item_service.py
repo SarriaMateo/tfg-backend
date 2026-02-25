@@ -124,6 +124,9 @@ class ItemService:
                 detail="ITEM_NOT_FOUND"
             )
 
+        # Check which fields were explicitly sent
+        sent_fields = item_data.model_dump(exclude_unset=True)
+
         # Validate SKU uniqueness if it's being changed
         if item_data.sku is not None and item_data.sku != item.sku:
             existing_item = ItemRepository.get_by_sku_and_company(
@@ -142,6 +145,12 @@ class ItemService:
                 ItemImageHandler.delete_image(item.image_url)
             # Save new image
             item.image_url = ItemImageHandler.save_image(image_file, image_filename, current_user.company_id)
+        # Only handle image_url from JSON if it was explicitly sent and no file was uploaded
+        elif "image_url" in sent_fields:
+            # If image_url is being set to None, delete the old image
+            if item_data.image_url is None and item.image_url:
+                ItemImageHandler.delete_image(item.image_url)
+            item.image_url = item_data.image_url
 
         # Update only provided fields
         if item_data.name is not None:
@@ -150,12 +159,15 @@ class ItemService:
             item.sku = item_data.sku
         if item_data.unit is not None:
             item.unit = Unit(item_data.unit.value)
-        if item_data.description is not None:
+        
+        # Update optional fields only if explicitly sent (allows deletion by sending null)
+        if "description" in sent_fields:
             item.description = item_data.description
-        if item_data.price is not None:
+        if "price" in sent_fields:
             item.price = item_data.price
-        if item_data.brand is not None:
+        if "brand" in sent_fields:
             item.brand = item_data.brand
+        
         if item_data.is_active is not None:
             item.is_active = item_data.is_active
 

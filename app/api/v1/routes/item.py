@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, status, Form, Query
+from fastapi import APIRouter, Depends, UploadFile, File, status, Form, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -81,6 +81,7 @@ def get_item(
 )
 async def update_item(
     item_id: int,
+    request: Request,
     name: Optional[str] = Form(None),
     sku: Optional[str] = Form(None),
     unit: Optional[str] = Form(None),
@@ -95,18 +96,36 @@ async def update_item(
 ):
     """
     Update an item. Only MANAGER and ADMIN can update items.
+    
+    To clear an optional field (description, price, brand, image_url), 
+    explicitly send the field with null/empty value.
+    To preserve a field unchanged, simply don't include it in the request.
     """
-    # Build ItemUpdate from form data
-    item_data = ItemUpdate(
-        name=name,
-        sku=sku,
-        unit=unit,
-        description=description,
-        price=price,
-        brand=brand,
-        image_url=image_url_form,
-        is_active=is_active
-    )
+    # Get form data to detect which fields were actually sent
+    form_data = await request.form()
+    sent_fields = set(form_data.keys()) - {'image'}  # Exclude file uploads
+    
+    # Build ItemUpdate only with fields that were explicitly sent
+    update_data = {}
+    
+    if 'name' in sent_fields:
+        update_data['name'] = name
+    if 'sku' in sent_fields:
+        update_data['sku'] = sku
+    if 'unit' in sent_fields:
+        update_data['unit'] = unit
+    if 'description' in sent_fields:
+        update_data['description'] = description
+    if 'price' in sent_fields:
+        update_data['price'] = price
+    if 'brand' in sent_fields:
+        update_data['brand'] = brand
+    if 'image_url_form' in sent_fields:
+        update_data['image_url'] = image_url_form
+    if 'is_active' in sent_fields:
+        update_data['is_active'] = is_active
+    
+    item_data = ItemUpdate(**update_data)
 
     # Read image content if provided
     image_file = None

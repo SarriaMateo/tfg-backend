@@ -251,6 +251,108 @@ class TestItemServiceUpdate:
 
         assert exc_info.value.status_code == 403
 
+    @patch("app.services.item.item_service.ItemRepository")
+    def test_update_item_clear_description(self, mock_repo, mock_db, admin_user):
+        """Can clear description by sending null"""
+        item = Mock(spec=Item)
+        item.id = 1
+        item.sku = "SKU001"
+        item.company_id = admin_user.company_id
+        item.description = "Old description"
+        item.image_url = None
+        mock_repo.get_by_id.return_value = item
+
+        # Explicitly set description to None
+        item_data = ItemUpdate(description=None)
+
+        result = ItemService.update_item(mock_db, 1, item_data, admin_user)
+
+        assert result.description is None
+        mock_repo.update.assert_called_once()
+
+    @patch("app.services.item.item_service.ItemRepository")
+    def test_update_item_clear_price(self, mock_repo, mock_db, admin_user):
+        """Can clear price by sending null"""
+        item = Mock(spec=Item)
+        item.id = 1
+        item.sku = "SKU001"
+        item.company_id = admin_user.company_id
+        item.price = Decimal("99.99")
+        item.image_url = None
+        mock_repo.get_by_id.return_value = item
+
+        item_data = ItemUpdate(price=None)
+
+        result = ItemService.update_item(mock_db, 1, item_data, admin_user)
+
+        assert result.price is None
+        mock_repo.update.assert_called_once()
+
+    @patch("app.services.item.item_service.ItemRepository")
+    def test_update_item_clear_brand(self, mock_repo, mock_db, admin_user):
+        """Can clear brand by sending null"""
+        item = Mock(spec=Item)
+        item.id = 1
+        item.sku = "SKU001"
+        item.company_id = admin_user.company_id
+        item.brand = "Old Brand"
+        item.image_url = None
+        mock_repo.get_by_id.return_value = item
+
+        item_data = ItemUpdate(brand=None)
+
+        result = ItemService.update_item(mock_db, 1, item_data, admin_user)
+
+        assert result.brand is None
+        mock_repo.update.assert_called_once()
+
+    @patch("app.services.item.item_service.ItemImageHandler")
+    @patch("app.services.item.item_service.ItemRepository")
+    def test_update_item_clear_image_url(self, mock_repo, mock_image_handler, mock_db, admin_user):
+        """Can clear image_url by sending null (deletes image from storage)"""
+        item = Mock(spec=Item)
+        item.id = 1
+        item.sku = "SKU001"
+        item.company_id = admin_user.company_id
+        item.image_url = "https://example.com/old-image.jpg"
+        mock_repo.get_by_id.return_value = item
+
+        item_data = ItemUpdate(image_url=None)
+
+        result = ItemService.update_item(mock_db, 1, item_data, admin_user)
+
+        assert result.image_url is None
+        mock_image_handler.delete_image.assert_called_once_with("https://example.com/old-image.jpg")
+        mock_repo.update.assert_called_once()
+
+    @patch("app.services.item.item_service.ItemRepository")
+    def test_update_item_preserve_unset_fields(self, mock_repo, mock_db, admin_user):
+        """Fields not included in update request are preserved"""
+        item = Mock(spec=Item)
+        item.id = 1
+        item.sku = "SKU001"
+        item.name = "Original Name"
+        item.company_id = admin_user.company_id
+        item.description = "Original description"
+        item.price = Decimal("99.99")
+        item.brand = "Original Brand"
+        item.image_url = "https://example.com/image.jpg"
+        mock_repo.get_by_id.return_value = item
+
+        # Only update name, other fields should be preserved
+        item_data = ItemUpdate(name="New Name")
+
+        result = ItemService.update_item(mock_db, 1, item_data, admin_user)
+
+        # Name should be updated
+        assert result.name == "New Name"
+        # Other fields should remain unchanged
+        assert result.description == "Original description"
+        assert result.price == Decimal("99.99")
+        assert result.brand == "Original Brand"
+        assert result.image_url == "https://example.com/image.jpg"
+        mock_repo.update.assert_called_once()
+
 
 class TestItemServiceDelete:
     """Tests for ItemService.delete_item"""
