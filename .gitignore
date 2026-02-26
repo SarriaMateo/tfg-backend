@@ -7,3 +7,4 @@ __pycache__/
 *.DS_Store
 app/C4_ARCHITECTURE_COMPONENT_BACKEND.md
 /media/
+errorMessages.js

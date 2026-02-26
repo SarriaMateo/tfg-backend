@@ -89,8 +89,8 @@ async def update_item(
     description: Optional[str] = Form(None),
     price: Optional[float] = Form(None),
     brand: Optional[str] = Form(None),
-    image_url_form: Optional[str] = Form(None),
     is_active: Optional[bool] = Form(None),
+    delete_image: Optional[bool] = Form(None),
     image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("MANAGER", "ADMIN"))
@@ -101,10 +101,11 @@ async def update_item(
     To clear an optional field (description, price, brand, image_url), 
     explicitly send the field with null/empty value.
     To preserve a field unchanged, simply don't include it in the request.
+    To delete the current image, send delete_image=true.
     """
     # Get form data to detect which fields were actually sent
     form_data = await request.form()
-    sent_fields = set(form_data.keys()) - {'image'}  # Exclude file uploads
+    sent_fields = set(form_data.keys()) - {'image', 'delete_image'}  # Exclude file uploads and image deletion flag
     
     # Build ItemUpdate only with fields that were explicitly sent
     update_data = {}
@@ -121,30 +122,22 @@ async def update_item(
         update_data['price'] = price
     if 'brand' in sent_fields:
         update_data['brand'] = brand
-    if 'image_url_form' in sent_fields:
-        update_data['image_url'] = image_url_form
     if 'is_active' in sent_fields:
         update_data['is_active'] = is_active
     
     item_data = ItemUpdate(**update_data)
 
-    # Handle image: detect if image field was explicitly sent
+    # Handle image upload if provided, or delete if flag is set
     image_file = None
     image_filename = None
-    delete_image = False
     
-    # If 'image' field was sent in the request
-    if 'image' in form_data:
-        if image:
-            # Image field sent with a file
-            image_file = await image.read()
-            image_filename = image.filename
-        else:
-            # Image field sent but empty - delete the current image
-            delete_image = True
+    if image:
+        # New image file is being uploaded
+        image_file = await image.read()
+        image_filename = image.filename
 
     updated_item = ItemService.update_item(
-        db, item_id, item_data, current_user, image_file, image_filename, delete_image
+        db, item_id, item_data, current_user, image_file, image_filename, delete_image or False
     )
     ItemRepository.commit(db)
     return updated_item

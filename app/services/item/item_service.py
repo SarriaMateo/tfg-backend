@@ -140,24 +140,18 @@ class ItemService:
                     detail="SKU_ALREADY_EXISTS"
                 )
 
-        # Handle image update if new image is provided
+        # Handle image update if new image is provided, or delete if flag is set
         if image_file and image_filename:
             # Delete old image if it exists
             if item.image_url:
                 ItemImageHandler.delete_image(item.image_url)
             # Save new image
             item.image_url = ItemImageHandler.save_image(image_file, image_filename, current_user.company_id)
-        # Handle explicit image deletion (empty image field sent)
         elif delete_image:
+            # Delete image if flag is set
             if item.image_url:
                 ItemImageHandler.delete_image(item.image_url)
             item.image_url = None
-        # Only handle image_url from JSON if it was explicitly sent and no file was uploaded
-        elif "image_url" in sent_fields:
-            # If image_url is being set to None, delete the old image
-            if item_data.image_url is None and item.image_url:
-                ItemImageHandler.delete_image(item.image_url)
-            item.image_url = item_data.image_url
 
         # Update only provided fields
         if item_data.name is not None:
