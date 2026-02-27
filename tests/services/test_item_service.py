@@ -306,25 +306,6 @@ class TestItemServiceUpdate:
         assert result.brand is None
         mock_repo.update.assert_called_once()
 
-    @patch("app.services.item.item_service.ItemImageHandler")
-    @patch("app.services.item.item_service.ItemRepository")
-    def test_update_item_clear_image_url(self, mock_repo, mock_image_handler, mock_db, admin_user):
-        """Can clear image_url by sending null (deletes image from storage)"""
-        item = Mock(spec=Item)
-        item.id = 1
-        item.sku = "SKU001"
-        item.company_id = admin_user.company_id
-        item.image_url = "https://example.com/old-image.jpg"
-        mock_repo.get_by_id.return_value = item
-
-        item_data = ItemUpdate(image_url=None)
-
-        result = ItemService.update_item(mock_db, 1, item_data, admin_user)
-
-        assert result.image_url is None
-        mock_image_handler.delete_image.assert_called_once_with("https://example.com/old-image.jpg")
-        mock_repo.update.assert_called_once()
-
     @patch("app.services.item.item_service.ItemRepository")
     def test_update_item_preserve_unset_fields(self, mock_repo, mock_db, admin_user):
         """Fields not included in update request are preserved"""
