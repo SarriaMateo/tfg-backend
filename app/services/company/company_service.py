@@ -5,6 +5,7 @@ from app.db.models.company import Company
 from app.db.models.user import User, Role
 from app.repositories.company_repository import CompanyRepository
 from app.schemas.company import CompanyUpdate
+from app.services.user.user_service import UserService
 
 
 class CompanyService:
@@ -22,6 +23,8 @@ class CompanyService:
 
     @staticmethod
     def get_company_for_user(db: Session, current_user: User) -> Company:
+        UserService.validate_user_active(current_user)
+        
         company = CompanyRepository.get_by_id(db, current_user.company_id)
         if company is None:
             raise HTTPException(
@@ -37,6 +40,8 @@ class CompanyService:
         company_data: CompanyUpdate,
         admin_user: User
     ) -> Company:
+        UserService.validate_user_active(admin_user)
+        
         if admin_user.role != Role.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

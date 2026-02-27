@@ -37,6 +37,9 @@ class UserService:
         - Username must be unique across the entire application
         - If a branch is assigned, it must belong to the admin's company
         """
+        # Verify that the authenticated user is active
+        UserService.validate_user_active(admin_user)
+        
         # Verify that the authenticated user is admin
         if admin_user.role != Role.ADMIN:
             raise HTTPException(
@@ -98,6 +101,9 @@ class UserService:
         - Admins can view any user from their company
         - Non-admin users can only view their own profile
         """
+        # Verify that the current user is active
+        UserService.validate_user_active(current_user)
+        
         user = UserRepository.get_by_id(db, user_id)
         if not user:
             raise HTTPException(
@@ -131,6 +137,9 @@ class UserService:
         Get all users from the admin's company.
         Only admins can view all users.
         """
+        # Verify that the authenticated user is active
+        UserService.validate_user_active(admin_user)
+        
         if admin_user.role != Role.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -152,6 +161,9 @@ class UserService:
         - Admins can update any user from their company
         - Non-admin users can only update their own profile and only certain fields
         """
+        # Verify that the current user is active
+        UserService.validate_user_active(current_user)
+        
         user = UserRepository.get_by_id(db, user_id)
         if not user:
             raise HTTPException(
@@ -283,6 +295,9 @@ class UserService:
         - Admin can only delete users from their own company
         - Cannot delete the only admin of a company
         """
+        # Verify that the authenticated user is active
+        UserService.validate_user_active(admin_user)
+        
         # Verify is admin
         if admin_user.role != Role.ADMIN:
             raise HTTPException(

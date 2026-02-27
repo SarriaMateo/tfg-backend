@@ -6,6 +6,7 @@ from app.db.models.user import User, Role
 from app.repositories.branch_repository import BranchRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.branch import BranchCreate, BranchUpdate
+from app.services.user.user_service import UserService
 
 
 class BranchService:
@@ -17,6 +18,8 @@ class BranchService:
         branch_data: BranchCreate,
         admin_user: User
     ) -> Branch:
+        UserService.validate_user_active(admin_user)
+        
         if admin_user.role != Role.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -47,6 +50,8 @@ class BranchService:
         branch_id: int,
         current_user: User
     ) -> Branch:
+        UserService.validate_user_active(current_user)
+        
         branch = BranchRepository.get_by_id(db, branch_id)
         if not branch:
             raise HTTPException(
@@ -74,6 +79,8 @@ class BranchService:
         db: Session,
         current_user: User
     ) -> list[Branch]:
+        UserService.validate_user_active(current_user)
+        
         if current_user.role == Role.ADMIN or current_user.branch_id is None:
             return BranchRepository.get_by_company_id(db, current_user.company_id)
 
@@ -93,6 +100,8 @@ class BranchService:
         branch_data: BranchUpdate,
         admin_user: User
     ) -> Branch:
+        UserService.validate_user_active(admin_user)
+        
         if admin_user.role != Role.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -136,6 +145,8 @@ class BranchService:
         branch_id: int,
         admin_user: User
     ) -> None:
+        UserService.validate_user_active(admin_user)
+        
         if admin_user.role != Role.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

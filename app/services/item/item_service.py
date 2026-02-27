@@ -10,6 +10,7 @@ from app.repositories.item_repository import ItemRepository
 from app.repositories.category_repository import CategoryRepository
 from app.schemas.item import ItemCreate, ItemUpdate
 from app.core.file_handler import ItemImageHandler
+from app.services.user.user_service import UserService
 
 
 class ItemService:
@@ -29,6 +30,8 @@ class ItemService:
         - User must be MANAGER or ADMIN
         - SKU must be unique within the company
         """
+        UserService.validate_user_active(current_user)
+        
         if current_user.role not in (Role.MANAGER, Role.ADMIN):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -74,6 +77,8 @@ class ItemService:
         """
         Get an item. All users can view items from their company.
         """
+        UserService.validate_user_active(current_user)
+        
         item = ItemRepository.get_by_id(db, item_id)
         if not item:
             raise HTTPException(
@@ -107,6 +112,8 @@ class ItemService:
         - Item must belong to user's company
         - If SKU is changed, it must remain unique within the company
         """
+        UserService.validate_user_active(current_user)
+        
         if current_user.role not in (Role.MANAGER, Role.ADMIN):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -188,6 +195,8 @@ class ItemService:
         - User must be ADMIN
         - Item must belong to user's company
         """
+        UserService.validate_user_active(current_user)
+        
         if current_user.role != Role.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -231,6 +240,8 @@ class ItemService:
         
         If category_ids is empty, all categories will be removed from the item.
         """
+        UserService.validate_user_active(current_user)
+        
         if current_user.role not in (Role.MANAGER, Role.ADMIN):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -286,6 +297,8 @@ class ItemService:
         - Item must have an image
         - Image file must exist on filesystem
         """
+        UserService.validate_user_active(current_user)
+        
         # Verify user has access to this item (must be from same company)
         item = ItemService.get_item(db, item_id, current_user)
         

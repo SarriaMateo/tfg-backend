@@ -5,6 +5,7 @@ from app.db.models.category import Category
 from app.db.models.user import User, Role
 from app.repositories.category_repository import CategoryRepository
 from app.schemas.category import CategoryCreate, CategoryUpdate
+from app.services.user.user_service import UserService
 
 
 class CategoryService:
@@ -22,6 +23,8 @@ class CategoryService:
         - User must be MANAGER or ADMIN
         - Category belongs to user's company
         """
+        UserService.validate_user_active(current_user)
+        
         if current_user.role not in (Role.MANAGER, Role.ADMIN):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -47,6 +50,8 @@ class CategoryService:
         Get all categories for the user's company.
         All users can view categories from their company.
         """
+        UserService.validate_user_active(current_user)
+        
         return CategoryRepository.get_by_company_id(db, current_user.company_id)
 
     @staticmethod
@@ -58,6 +63,8 @@ class CategoryService:
         """
         Get a category. All users can view categories from their company.
         """
+        UserService.validate_user_active(current_user)
+        
         category = CategoryRepository.get_by_id(db, category_id)
         if not category:
             raise HTTPException(
@@ -87,6 +94,8 @@ class CategoryService:
         - User must be MANAGER or ADMIN
         - Category must belong to user's company
         """
+        UserService.validate_user_active(current_user)
+        
         if current_user.role not in (Role.MANAGER, Role.ADMIN):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -128,6 +137,8 @@ class CategoryService:
         - User must be ADMIN
         - Category must belong to user's company
         """
+        UserService.validate_user_active(current_user)
+        
         if current_user.role != Role.ADMIN:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
