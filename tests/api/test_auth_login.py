@@ -66,3 +66,28 @@ async def test_login_user_not_found(client):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "INVALID_CREDENTIALS"
+
+@pytest.mark.asyncio
+async def test_login_inactive_user(client, db_session):
+    """Test that inactive users cannot login"""
+    user = User(
+        name="Inactive User",
+        username="inactive_user",
+        hashed_password=hash_password("password123"),
+        role=Role.EMPLOYEE,
+        is_active=False,
+        company_id=1,
+        branch_id=None,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    payload = {
+        "username": "inactive_user",
+        "password": "password123",
+    }
+
+    response = await client.post("/api/v1/auth/login", json=payload)
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "USER_INACTIVE"
