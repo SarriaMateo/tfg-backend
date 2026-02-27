@@ -4,7 +4,7 @@ from __future__ import annotations
 from enum import Enum as PyEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, String, Enum as SAEnum
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -28,6 +28,10 @@ class User(Base):
         SAEnum(Role, name="user_role"),
         nullable=False,
         default=Role.EMPLOYEE,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=True,
     )
     company_id: Mapped[int] = mapped_column(
         Integer,
