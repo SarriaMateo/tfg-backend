@@ -30,6 +30,7 @@ class UserResponse(BaseModel):
     name: str
     username: str
     role: UserRole
+    is_active: bool
     company_id: int
     branch_id: Optional[int]
 
@@ -79,6 +80,7 @@ class UserUpdateAdmin(BaseModel):
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     password: Optional[str] = Field(None, min_length=8, max_length=72)
     role: Optional[UserRole] = None
+    is_active: Optional[bool] = None
     branch_id: Optional[int] = None
 
     @field_validator("username")

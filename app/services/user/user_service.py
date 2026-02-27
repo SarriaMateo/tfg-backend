@@ -13,6 +13,19 @@ class UserService:
     """Business logic service for users"""
 
     @staticmethod
+    def validate_user_active(user: User) -> None:
+        """
+        Validate that a user is active.
+        Raises 403 Forbidden if user is not active.
+        Can be used in dependencies to check is_active from JWT token's user_id.
+        """
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="USER_INACTIVE"
+            )
+
+    @staticmethod
     def create_user(
         db: Session,
         user_data: UserCreate,
@@ -66,6 +79,7 @@ class UserService:
             username=user_data.username,
             hashed_password=hash_password(user_data.password),
             role=Role(user_data.role.value),
+            is_active=True,
             company_id=admin_user.company_id,
             branch_id=user_data.branch_id
         )
@@ -249,6 +263,10 @@ class UserService:
             # Only update branch_id if it was explicitly sent
             if "branch_id" in sent_fields:
                 user.branch_id = user_data.branch_id
+            
+            # Only update is_active if it was explicitly sent
+            if "is_active" in sent_fields:
+                user.is_active = user_data.is_active
 
         return UserRepository.update(db, user)
 
