@@ -342,3 +342,93 @@ class TestUserActiveStatus:
         assert response.status_code == 200
         # Verify is_active wasn't attempted to be changed
         assert response.json()["is_active"] is True
+    @pytest.mark.asyncio
+    async def test_cannot_deactivate_last_active_admin(self, client: AsyncClient, admin_user):
+        """Test that the last active admin of a company cannot be deactivated"""
+        token = create_access_token({
+            "sub": admin_user.username,
+            "user_id": admin_user.id,
+            "role": admin_user.role.value,
+            "company_id": admin_user.company_id,
+            "branch_id": admin_user.branch_id,
+        })
+
+        # Try to deactivate the only admin
+        response = await client.put(
+            f"/api/v1/users/{admin_user.id}/admin",
+            json={"is_active": False},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "CANNOT_DEACTIVATE_LAST_ACTIVE_ADMIN"
+
+    @pytest.mark.asyncio
+    async def test_can_deactivate_admin_if_another_active_admin_exists(self, client: AsyncClient, admin_user, db_session):
+        """Test that an admin can be deactivated if another active admin exists"""
+        # Create a second admin
+        second_admin = User(
+            name="Second Admin",
+            username="second_admin",
+            hashed_password=hash_password("admin456"),
+            role=Role.ADMIN,
+            is_active=True,
+            company_id=admin_user.company_id,
+            branch_id=None,
+        )
+        db_session.add(second_admin)
+        db_session.commit()
+        db_session.refresh(second_admin)
+
+        token = create_access_token({
+            "sub": admin_user.username,
+            "user_id": admin_user.id,
+            "role": admin_user.role.value,
+            "company_id": admin_user.company_id,
+            "branch_id": admin_user.branch_id,
+        })
+
+        # Deactivate the second admin (should succeed because first admin is still active)
+        response = await client.put(
+            f"/api/v1/users/{second_admin.id}/admin",
+            json={"is_active": False},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["is_active"] is False
+
+    @pytest.mark.asyncio
+    async def test_can_reactivate_inactive_admin(self, client: AsyncClient, admin_user, db_session):
+        """Test that an inactive admin can be reactivated"""
+        # Create an inactive admin
+        inactive_admin = User(
+            name="Inactive Admin",
+            username="inactive_admin",
+            hashed_password=hash_password("admin789"),
+            role=Role.ADMIN,
+            is_active=False,
+            company_id=admin_user.company_id,
+            branch_id=None,
+        )
+        db_session.add(inactive_admin)
+        db_session.commit()
+        db_session.refresh(inactive_admin)
+
+        token = create_access_token({
+            "sub": admin_user.username,
+            "user_id": admin_user.id,
+            "role": admin_user.role.value,
+            "company_id": admin_user.company_id,
+            "branch_id": admin_user.branch_id,
+        })
+
+        # Reactivate the inactive admin
+        response = await client.put(
+            f"/api/v1/users/{inactive_admin.id}/admin",
+            json={"is_active": True},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["is_active"] is True

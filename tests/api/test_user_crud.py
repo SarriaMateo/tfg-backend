@@ -495,6 +495,33 @@ async def test_cannot_change_last_admin_role(client, admin_user):
 
 
 @pytest.mark.asyncio
+async def test_cannot_change_last_active_admin_role_with_inactive_admin(client, admin_user, db_session):
+    """Cannot change role of the only active admin if another admin is inactive"""
+    inactive_admin = User(
+        name="Inactive Admin",
+        username="inactive_admin_for_role_change",
+        hashed_password=hash_password("inactive123"),
+        role=Role.ADMIN,
+        is_active=False,
+        company_id=admin_user.company_id,
+        branch_id=None,
+    )
+    db_session.add(inactive_admin)
+    db_session.commit()
+
+    token = get_admin_token(admin_user)
+
+    response = await client.put(
+        f"/api/v1/users/{admin_user.id}/admin",
+        json={"role": "MANAGER"},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "CANNOT_CHANGE_ROLE_LAST_ADMIN"
+
+
+@pytest.mark.asyncio
 async def test_update_user_branch_different_company(client, admin_user, other_company_admin, db_session):
     """Cannot assign branch from different company when updating"""
     # Get branch from another company
@@ -576,6 +603,32 @@ async def test_cannot_delete_last_admin(client, admin_user):
         headers={"Authorization": f"Bearer {token}"}
     )
     
+    assert response.status_code == 400
+    assert response.json()["detail"] == "CANNOT_DELETE_LAST_ADMIN"
+
+
+@pytest.mark.asyncio
+async def test_cannot_delete_last_active_admin_with_inactive_admin(client, admin_user, db_session):
+    """Cannot delete the only active admin if another admin is inactive"""
+    inactive_admin = User(
+        name="Inactive Admin",
+        username="inactive_admin_for_delete",
+        hashed_password=hash_password("inactive123"),
+        role=Role.ADMIN,
+        is_active=False,
+        company_id=admin_user.company_id,
+        branch_id=None,
+    )
+    db_session.add(inactive_admin)
+    db_session.commit()
+
+    token = get_admin_token(admin_user)
+
+    response = await client.delete(
+        f"/api/v1/users/{admin_user.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
     assert response.status_code == 400
     assert response.json()["detail"] == "CANNOT_DELETE_LAST_ADMIN"
 

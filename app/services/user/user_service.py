@@ -207,12 +207,12 @@ class UserService:
                 # If changing role
                 if user_data.role and user_data.role.value != user.role.value:
                     # If changing from ADMIN to another
-                    if user.role == Role.ADMIN:
-                        # Verify it's not the only admin of the company
-                        admin_count = UserRepository.count_admins_by_company(
+                    if user.role == Role.ADMIN and user.is_active:
+                        # Verify it's not the only active admin of the company
+                        active_admin_count = UserRepository.count_active_admins_by_company(
                             db, user.company_id
                         )
-                        if admin_count == 1:
+                        if active_admin_count == 1:
                             raise HTTPException(
                                 status_code=status.HTTP_400_BAD_REQUEST,
                                 detail="CANNOT_CHANGE_ROLE_LAST_ADMIN"
@@ -278,6 +278,17 @@ class UserService:
             
             # Only update is_active if it was explicitly sent
             if "is_active" in sent_fields:
+                # Verify cannot deactivate the only active admin of the company
+                if user_data.is_active == False and user.is_active == True and user.role == Role.ADMIN:
+                    active_admin_count = UserRepository.count_active_admins_by_company(
+                        db, user.company_id
+                    )
+                    if active_admin_count == 1:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="CANNOT_DEACTIVATE_LAST_ACTIVE_ADMIN"
+                        )
+                
                 user.is_active = user_data.is_active
 
         return UserRepository.update(db, user)
@@ -319,10 +330,10 @@ class UserService:
                 detail="USER_FROM_DIFFERENT_COMPANY"
             )
 
-        # Verify it's not the only admin of the company
-        if user.role == Role.ADMIN:
-            admin_count = UserRepository.count_admins_by_company(db, user.company_id)
-            if admin_count == 1:
+        # Verify it's not the only active admin of the company
+        if user.role == Role.ADMIN and user.is_active:
+            active_admin_count = UserRepository.count_active_admins_by_company(db, user.company_id)
+            if active_admin_count == 1:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="CANNOT_DELETE_LAST_ADMIN"

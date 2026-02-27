@@ -36,6 +36,16 @@ class UserRepository:
         ).count()
 
     @staticmethod
+    def count_active_admins_by_company(db: Session, company_id: int) -> int:
+        return db.query(User).filter(
+            and_(
+                User.company_id == company_id,
+                User.role == Role.ADMIN,
+                User.is_active.is_(True)
+            )
+        ).count()
+
+    @staticmethod
     def count_by_branch_id(db: Session, branch_id: int) -> int:
         return db.query(User).filter(User.branch_id == branch_id).count()
 
