@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_
 from typing import Optional, Tuple
 from app.db.models.item import Item, Unit
 from app.db.models.association import item_categories

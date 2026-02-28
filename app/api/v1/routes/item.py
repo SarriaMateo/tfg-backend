@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, UploadFile, File, status, Form, Query, Request, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, status, Form, Query, Request
 from starlette.responses import FileResponse
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, Literal
 
 from app.db.session import get_db
-from app.schemas.item import ItemCreate, ItemUpdate, ItemResponse
+from app.schemas.item import ItemCreate, ItemUpdate, ItemResponse, ItemWithStock
+from app.schemas.common import PaginatedResponse
 from app.schemas.category import CategoryResponse
 from app.core.security import get_current_user, require_roles
 from app.db.models.user import User
@@ -12,6 +13,43 @@ from app.services.item.item_service import ItemService
 from app.repositories.item_repository import ItemRepository
 
 router = APIRouter(prefix="/items", tags=["items"])
+
+
+@router.get(
+    "",
+    response_model=PaginatedResponse[ItemWithStock],
+    status_code=status.HTTP_200_OK
+)
+def list_items(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    is_active: Optional[bool] = Query(None),
+    brand: Optional[str] = Query(None),
+    category_id: Optional[int] = Query(None, ge=1),
+    unit: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    order_by: Literal["sku", "name", "created_at", "price", "stock"] = Query("created_at"),
+    order_desc: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List company items with filtering, search, sorting, pagination and stock per branch.
+    Only authenticated active users can access this endpoint.
+    """
+    return ItemService.list_items(
+        db=db,
+        current_user=current_user,
+        page=page,
+        page_size=page_size,
+        is_active=is_active,
+        brand=brand,
+        category_id=category_id,
+        unit=unit,
+        search=search,
+        order_by=order_by,
+        order_desc=order_desc
+    )
 
 
 @router.post(

@@ -436,6 +436,7 @@ class ItemService:
 
         # Build response with stock information
         items_with_stock = []
+        item_total_stock: dict[int, Decimal] = {}
         for item in items:
             # Calculate stock by branch for this item
             stock_by_branch = []
@@ -463,25 +464,19 @@ class ItemService:
                 company_id=item.company_id,
                 stock_by_branch=stock_by_branch
             )
-            # Store total stock for sorting
-            item_with_stock._total_stock = total_stock
             items_with_stock.append(item_with_stock)
+            item_total_stock[item.id] = total_stock
 
         # If ordering by stock, sort in memory and apply pagination
         if order_by == "stock":
             items_with_stock.sort(
-                key=lambda x: x._total_stock,
+                key=lambda item_data: item_total_stock.get(item_data.id, Decimal("0.000")),
                 reverse=order_desc
             )
             # Apply pagination
             start_idx = (page - 1) * page_size
             end_idx = start_idx + page_size
             items_with_stock = items_with_stock[start_idx:end_idx]
-
-        # Remove temporary _total_stock attribute
-        for item in items_with_stock:
-            if hasattr(item, '_total_stock'):
-                delattr(item, '_total_stock')
 
         # Calculate total pages
         total_pages = math.ceil(total_count / page_size) if total_count > 0 else 0
