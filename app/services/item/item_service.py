@@ -2,13 +2,18 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Optional
 from pathlib import Path
+from decimal import Decimal
+import math
 
 from app.db.models.item import Item, Unit
 from app.db.models.user import User, Role
 from app.db.models.category import Category
 from app.repositories.item_repository import ItemRepository
 from app.repositories.category_repository import CategoryRepository
-from app.schemas.item import ItemCreate, ItemUpdate
+from app.repositories.branch_repository import BranchRepository
+from app.repositories.stock_movement_repository import StockMovementRepository
+from app.schemas.item import ItemCreate, ItemUpdate, ItemWithStock, BranchStock
+from app.schemas.common import PaginatedResponse
 from app.core.file_handler import ItemImageHandler
 from app.services.user.user_service import UserService
 
@@ -326,3 +331,165 @@ class ItemService:
             media_type = "application/octet-stream"
         
         return image_path, media_type
+
+    @staticmethod
+    def list_items(
+        db: Session,
+        current_user: User,
+        page: int = 1,
+        page_size: int = 20,
+        is_active: Optional[bool] = None,
+        brand: Optional[str] = None,
+        category_id: Optional[int] = None,
+        unit: Optional[str] = None,
+        search: Optional[str] = None,
+        order_by: str = "created_at",
+        order_desc: bool = True
+    ) -> PaginatedResponse[ItemWithStock]:
+        """
+        List items with filters, search, pagination, sorting and stock calculation.
+        
+        Filters:
+        - is_active: Filter by active status
+        - brand: Filter by brand (exact match)
+        - category_id: Filter by category
+        - unit: Filter by unit of measure
+        
+        Search:
+        - search: Search in name and sku (case-insensitive, partial match)
+        
+        Ordering:
+        - order_by: Field to order by (sku, name, created_at, price, stock)
+        - order_desc: True for descending, False for ascending
+        
+        Returns paginated response with items including stock per branch.
+        Only active users from the same company can access.
+        """
+        UserService.validate_user_active(current_user)
+
+        # Convert unit string to Unit enum if provided
+        unit_enum = None
+        if unit:
+            try:
+                unit_enum = Unit(unit)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="INVALID_UNIT"
+                )
+
+        # Validate category belongs to user's company if provided
+        if category_id is not None:
+            category = CategoryRepository.get_by_id_and_company(
+                db, category_id, current_user.company_id
+            )
+            if not category:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="CATEGORY_NOT_FOUND"
+                )
+
+        # Get all branches for the company
+        branches = BranchRepository.get_by_company_id(db, current_user.company_id)
+        branch_ids = [branch.id for branch in branches]
+
+        # For stock ordering, we need to fetch all items first, then sort in memory
+        # For other orderings, we can use database sorting
+        if order_by == "stock":
+            # Get all items without pagination for stock sorting
+            items, total_count = ItemRepository.list_items_with_filters(
+                db=db,
+                company_id=current_user.company_id,
+                page=1,
+                page_size=10000,  # Large number to get all items
+                is_active=is_active,
+                brand=brand,
+                category_id=category_id,
+                unit=unit_enum,
+                search=search,
+                order_by="created_at",  # Default ordering
+                order_desc=True
+            )
+        else:
+            # Get items with database-level sorting and pagination
+            items, total_count = ItemRepository.list_items_with_filters(
+                db=db,
+                company_id=current_user.company_id,
+                page=page,
+                page_size=page_size,
+                is_active=is_active,
+                brand=brand,
+                category_id=category_id,
+                unit=unit_enum,
+                search=search,
+                order_by=order_by,
+                order_desc=order_desc
+            )
+
+        # Get stock for all items across all branches
+        item_ids = [item.id for item in items]
+        stock_dict = {}
+        if item_ids and branch_ids:
+            stock_dict = StockMovementRepository.get_stock_by_items_and_branches(
+                db, item_ids, branch_ids
+            )
+
+        # Build response with stock information
+        items_with_stock = []
+        for item in items:
+            # Calculate stock by branch for this item
+            stock_by_branch = []
+            total_stock = Decimal("0.000")
+            for branch in branches:
+                stock = stock_dict.get((item.id, branch.id), Decimal("0.000"))
+                total_stock += stock
+                stock_by_branch.append(BranchStock(
+                    branch_id=branch.id,
+                    branch_name=branch.name,
+                    stock=stock
+                ))
+
+            item_with_stock = ItemWithStock(
+                id=item.id,
+                name=item.name,
+                sku=item.sku,
+                unit=item.unit.value,
+                created_at=item.created_at,
+                is_active=item.is_active,
+                description=item.description,
+                price=item.price,
+                brand=item.brand,
+                image_url=item.image_url,
+                company_id=item.company_id,
+                stock_by_branch=stock_by_branch
+            )
+            # Store total stock for sorting
+            item_with_stock._total_stock = total_stock
+            items_with_stock.append(item_with_stock)
+
+        # If ordering by stock, sort in memory and apply pagination
+        if order_by == "stock":
+            items_with_stock.sort(
+                key=lambda x: x._total_stock,
+                reverse=order_desc
+            )
+            # Apply pagination
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            items_with_stock = items_with_stock[start_idx:end_idx]
+
+        # Remove temporary _total_stock attribute
+        for item in items_with_stock:
+            if hasattr(item, '_total_stock'):
+                delattr(item, '_total_stock')
+
+        # Calculate total pages
+        total_pages = math.ceil(total_count / page_size) if total_count > 0 else 0
+
+        return PaginatedResponse(
+            data=items_with_stock,
+            total=total_count,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages
+        )
