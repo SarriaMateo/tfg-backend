@@ -10,6 +10,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.db.models.company import Company
     from app.db.models.user import User
+    from app.db.models.stock_movement import StockMovement
 
 class Branch(Base):
     __tablename__ = "branches"
@@ -29,4 +30,9 @@ class Branch(Base):
 
     company: Mapped["Company"] = relationship(
         back_populates="branches"
+    )
+    
+    stock_movements: Mapped[list["StockMovement"]] = relationship(
+        back_populates="branch",
+        cascade="all, delete-orphan"
     )
