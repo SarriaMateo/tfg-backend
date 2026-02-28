@@ -19,7 +19,7 @@ class CompanyRegistrationService:
         data: CompanyRegistrationRequest
     ) -> Tuple[Company, User]:
 
-        # 1. Reglas de unicidad
+        # 1. Uniqueness rules
         if CompanyRepository.get_by_email(db, data.company.email):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -38,7 +38,7 @@ class CompanyRegistrationService:
                 detail="USERNAME_ALREADY_EXISTS"
             )
 
-        # 2. Crear Company
+        # 2. Create Company
         company = Company(
             name=data.company.name,
             email=data.company.email,
@@ -46,9 +46,9 @@ class CompanyRegistrationService:
         )
 
         CompanyRepository.create(db, company)
-        db.flush()  # obtenemos company.id sin commit
+        db.flush()  # Get company.id without commit
 
-        # 3. Crear User ADMIN
+        # 3. Create ADMIN User
         admin_user = User(
             name=data.admin_user.name,
             username=data.admin_user.username,
@@ -60,7 +60,7 @@ class CompanyRegistrationService:
 
         UserRepository.create(db, admin_user)
 
-        # 4. Commit transaccional
+        # 4. Transactional commit
         db.commit()
         db.refresh(company)
         db.refresh(admin_user)

@@ -58,7 +58,7 @@ class CompanyRegistrationResponse(BaseModel):
     user: "UserResponse"  # noqa: F821
 
 
-# Importar aquí para evitar circular imports
+# Import here to avoid circular imports
 from .user import UserResponse  # noqa: E402, F401
 
 CompanyRegistrationResponse.model_rebuild()

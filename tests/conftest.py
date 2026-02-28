@@ -1,7 +1,7 @@
 # tests/conftest.py
 import os
 
-# Desactivar la detección de bugs de bcrypt durante inicialización
+# Disable bcrypt bug detection during initialization
 os.environ["PASSLIB_BCRYPT_TRUNCATE_ERROR"] = "false"
 
 import pytest

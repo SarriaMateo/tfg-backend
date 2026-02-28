@@ -1,7 +1,7 @@
 import os
 from fastapi.middleware.cors import CORSMiddleware
 
-# Desactivar la detección de bugs de bcrypt durante inicialización
+# Disable bcrypt bug detection during initialization
 os.environ["PASSLIB_BCRYPT_TRUNCATE_ERROR"] = "false"
 
 from fastapi import FastAPI
@@ -27,7 +27,7 @@ from app.db.models.association import item_categories
 
 app = FastAPI(title=settings.app_name)
 
-# Registrar exception handlers
+# Register exception handlers
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 app.add_middleware(
