@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
 import re
@@ -78,6 +78,35 @@ class ItemResponse(BaseModel):
     brand: Optional[str]
     image_url: Optional[str]
     company_id: int
+
+    class Config:
+        from_attributes = True
+
+
+class BranchStock(BaseModel):
+    """Stock information for a specific branch"""
+    branch_id: int
+    branch_name: str
+    stock: Decimal = Field(default=Decimal("0.000"), max_digits=10, decimal_places=3)
+
+    class Config:
+        from_attributes = True
+
+
+class ItemWithStock(BaseModel):
+    """Item with stock information per branch"""
+    id: int
+    name: str
+    sku: str
+    unit: ItemUnit
+    created_at: datetime
+    is_active: bool
+    description: Optional[str]
+    price: Optional[Decimal]
+    brand: Optional[str]
+    image_url: Optional[str]
+    company_id: int
+    stock_by_branch: List[BranchStock] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
