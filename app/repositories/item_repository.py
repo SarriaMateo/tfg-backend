@@ -28,7 +28,6 @@ class ItemRepository:
         page: int = 1,
         page_size: int = 20,
         is_active: Optional[bool] = None,
-        brand: Optional[str] = None,
         category_id: Optional[int] = None,
         unit: Optional[Unit] = None,
         search: Optional[str] = None,
@@ -41,12 +40,11 @@ class ItemRepository:
         
         Filters:
         - is_active: Filter by active status
-        - brand: Filter by brand (exact match)
         - category_id: Filter by category
         - unit: Filter by unit of measure
         
         Search:
-        - search: Search in name and sku (case-insensitive, partial match)
+        - search: Search in name, sku, and brand (case-insensitive, partial match)
         
         Ordering:
         - order_by: Field to order by (sku, name, created_at, price)
@@ -57,9 +55,6 @@ class ItemRepository:
         # Apply filters
         if is_active is not None:
             query = query.filter(Item.is_active == is_active)
-        
-        if brand:
-            query = query.filter(Item.brand == brand)
         
         if unit:
             query = query.filter(Item.unit == unit)
@@ -79,7 +74,8 @@ class ItemRepository:
             query = query.filter(
                 or_(
                     Item.name.ilike(search_pattern),
-                    Item.sku.ilike(search_pattern)
+                    Item.sku.ilike(search_pattern),
+                    Item.brand.ilike(search_pattern)
                 )
             )
 

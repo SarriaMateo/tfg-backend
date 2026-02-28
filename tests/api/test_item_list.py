@@ -177,12 +177,12 @@ async def test_list_items_returns_paginated_data_and_zero_stock(client, active_u
 
 
 @pytest.mark.asyncio
-async def test_list_items_filters_by_is_active_brand_unit_and_category(client, active_user_same_company, company_with_data):
+async def test_list_items_filters_by_is_active_unit_and_category(client, active_user_same_company, company_with_data):
     token = build_token(active_user_same_company)
     category_food = company_with_data["categories"][0]
 
     response = await client.get(
-        f"/api/v1/items?is_active=true&brand=Fresh&unit=kg&category_id={category_food.id}",
+        f"/api/v1/items?is_active=true&unit=kg&category_id={category_food.id}",
         headers={"Authorization": f"Bearer {token}"}
     )
 
@@ -193,11 +193,10 @@ async def test_list_items_filters_by_is_active_brand_unit_and_category(client, a
     assert len(payload["data"]) == 1
     assert payload["data"][0]["name"] == "Rice Bag"
     assert payload["data"][0]["unit"] == "kg"
-    assert payload["data"][0]["brand"] == "Fresh"
 
 
 @pytest.mark.asyncio
-async def test_list_items_search_by_name_and_sku(client, active_user_same_company):
+async def test_list_items_search_by_name_sku_and_brand(client, active_user_same_company):
     token = build_token(active_user_same_company)
 
     response_by_name = await client.get(
@@ -208,17 +207,25 @@ async def test_list_items_search_by_name_and_sku(client, active_user_same_compan
         "/api/v1/items?search=SKU003",
         headers={"Authorization": f"Bearer {token}"}
     )
+    response_by_brand = await client.get(
+        "/api/v1/items?search=CleanX",
+        headers={"Authorization": f"Bearer {token}"}
+    )
 
     assert response_by_name.status_code == 200
     assert response_by_sku.status_code == 200
+    assert response_by_brand.status_code == 200
 
     payload_name = response_by_name.json()
     payload_sku = response_by_sku.json()
+    payload_brand = response_by_brand.json()
 
     assert payload_name["total"] == 1
     assert payload_name["data"][0]["name"] == "Apple"
     assert payload_sku["total"] == 1
     assert payload_sku["data"][0]["sku"] == "SKU003"
+    assert payload_brand["total"] == 1
+    assert payload_brand["data"][0]["brand"] == "CleanX"
 
 
 @pytest.mark.asyncio

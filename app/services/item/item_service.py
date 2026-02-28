@@ -339,7 +339,6 @@ class ItemService:
         page: int = 1,
         page_size: int = 20,
         is_active: Optional[bool] = None,
-        brand: Optional[str] = None,
         category_id: Optional[int] = None,
         unit: Optional[str] = None,
         search: Optional[str] = None,
@@ -351,12 +350,11 @@ class ItemService:
         
         Filters:
         - is_active: Filter by active status
-        - brand: Filter by brand (exact match)
         - category_id: Filter by category
         - unit: Filter by unit of measure
         
         Search:
-        - search: Search in name and sku (case-insensitive, partial match)
+        - search: Search in name, sku, and brand (case-insensitive, partial match)
         
         Ordering:
         - order_by: Field to order by (sku, name, created_at, price, stock)
@@ -403,7 +401,6 @@ class ItemService:
                 page=1,
                 page_size=10000,  # Large number to get all items
                 is_active=is_active,
-                brand=brand,
                 category_id=category_id,
                 unit=unit_enum,
                 search=search,
@@ -418,7 +415,6 @@ class ItemService:
                 page=page,
                 page_size=page_size,
                 is_active=is_active,
-                brand=brand,
                 category_id=category_id,
                 unit=unit_enum,
                 search=search,
