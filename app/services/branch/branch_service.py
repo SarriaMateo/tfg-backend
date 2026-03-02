@@ -132,10 +132,21 @@ class BranchService:
                     detail="BRANCH_NAME_ALREADY_EXISTS"
                 )
 
+        # Validate is_active: cannot deactivate if branch has users
+        if branch_data.is_active is not None and branch_data.is_active == False and branch.is_active == True:
+            users_count = UserRepository.count_by_branch_id(db, branch_id)
+            if users_count > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="CANNOT_DEACTIVATE_BRANCH_WITH_USERS"
+                )
+
         if branch_data.name is not None:
             branch.name = branch_data.name
         if branch_data.address is not None:
             branch.address = branch_data.address
+        if branch_data.is_active is not None:
+            branch.is_active = branch_data.is_active
 
         return BranchRepository.update(db, branch)
 

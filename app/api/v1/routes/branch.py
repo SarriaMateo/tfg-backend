@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.branch import BranchCreate, BranchUpdate, BranchResponse, BranchNameResponse
+from app.schemas.branch import BranchCreate, BranchUpdate, BranchResponse
 from app.core.security import get_current_user, require_roles
 from app.db.models.user import User
 from app.services.branch.branch_service import BranchService
