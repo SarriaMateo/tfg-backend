@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.db.models.company import Company
     from app.db.models.user import User
     from app.db.models.stock_movement import StockMovement
+    from app.db.models.transaction import Transaction
 
 class Branch(Base):
     __tablename__ = "branches"
@@ -38,5 +39,11 @@ class Branch(Base):
     
     stock_movements: Mapped[list["StockMovement"]] = relationship(
         back_populates="branch",
+        cascade="all, delete-orphan"
+    )
+
+    transactions: Mapped[list["Transaction"]] = relationship(
+        back_populates="branch",
+        foreign_keys="Transaction.branch_id",
         cascade="all, delete-orphan"
     )

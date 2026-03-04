@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.db.models.company import Company
     from app.db.models.category import Category
     from app.db.models.stock_movement import StockMovement
+    from app.db.models.transaction_line import TransactionLine
 
 class Unit(PyEnum):
     UNIT = "ud"
@@ -53,6 +54,10 @@ class Item(Base):
         back_populates="items"
     )
     stock_movements: Mapped[list["StockMovement"]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan"
+    )
+    transaction_lines: Mapped[list["TransactionLine"]] = relationship(
         back_populates="item",
         cascade="all, delete-orphan"
     )

@@ -12,6 +12,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.db.models.item import Item
     from app.db.models.branch import Branch
+    from app.db.models.transaction import Transaction
 
 
 class MovementType(PyEnum):
@@ -41,7 +42,13 @@ class StockMovement(Base):
         ForeignKey("branches.id"),
         nullable=False
     )
+    transaction_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("transactions.id"),
+        nullable=False
+    )
 
     # Relationships
     item: Mapped["Item"] = relationship(back_populates="stock_movements")
     branch: Mapped["Branch"] = relationship(back_populates="stock_movements")
+    transaction: Mapped["Transaction"] = relationship(back_populates="stock_movements")

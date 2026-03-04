@@ -11,6 +11,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.db.models.branch import Branch
     from app.db.models.company import Company
+    from app.db.models.transaction_event import TransactionEvent
 
 class Role(PyEnum):
     ADMIN = "ADMIN"
@@ -50,4 +51,8 @@ class User(Base):
 
     branch: Mapped["Branch"] = relationship(
         back_populates="users"
+    )
+
+    transaction_events: Mapped[list["TransactionEvent"]] = relationship(
+        back_populates="user"
     )
