@@ -1,7 +1,7 @@
 """Add is_active field to branches table
 
 Revision ID: 4b5c6d7e8f9a
-Revises: 3a2c4f5e6b8d
+Revises: 5f1e3b7c9a2d
 Create Date: 2026-03-02
 
 """
