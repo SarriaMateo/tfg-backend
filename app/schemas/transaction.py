@@ -110,7 +110,7 @@ class TransactionEventResponse(BaseModel):
     id: int
     action_type: ActionType
     timestamp: datetime
-    metadata: Optional[dict] = None
+    event_metadata: Optional[dict] = None
     transaction_id: int
     performed_by: int
 

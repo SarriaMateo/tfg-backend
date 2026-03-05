@@ -29,7 +29,7 @@ class TransactionEvent(Base):
         nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    event_metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     transaction_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("transactions.id"),
