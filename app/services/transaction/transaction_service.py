@@ -262,15 +262,16 @@ class TransactionService:
         
         TransactionRepository.update(db, transaction)
         
-        # Create EDITED event
-        event = TransactionEvent(
-            action_type=ActionType.EDITED,
-            timestamp=datetime.utcnow(),
-            transaction_id=transaction.id,
-            performed_by=current_user.id,
-            event_metadata=changes
-        )
-        TransactionRepository.create_event(db, event)
+        # Create EDITED event only if there were actual changes
+        if changes:
+            event = TransactionEvent(
+                action_type=ActionType.EDITED,
+                timestamp=datetime.utcnow(),
+                transaction_id=transaction.id,
+                performed_by=current_user.id,
+                event_metadata=changes
+            )
+            TransactionRepository.create_event(db, event)
         
         TransactionRepository.commit(db)
         
