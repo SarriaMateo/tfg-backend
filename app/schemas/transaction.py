@@ -1,28 +1,9 @@
 from pydantic import BaseModel, Field, field_validator, computed_field
-from enum import Enum
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
-
-
-class OperationType(str, Enum):
-    IN = "IN"
-    OUT = "OUT"
-    TRANSFER = "TRANSFER"
-    ADJUSTMENT = "ADJUSTMENT"
-
-
-class TransactionStatus(str, Enum):
-    PENDING = "PENDING"
-    CANCELLED = "CANCELLED"
-    COMPLETED = "COMPLETED"
-
-
-class ActionType(str, Enum):
-    CREATED = "CREATED"
-    EDITED = "EDITED"
-    CANCELLED = "CANCELLED"
-    COMPLETED = "COMPLETED"
+from app.db.models.transaction import OperationType, TransactionStatus
+from app.db.models.transaction_event import ActionType
 
 
 class TransactionLineCreate(BaseModel):

@@ -54,7 +54,9 @@ class TransactionRepository:
         - order_desc: True for descending, False for ascending
         """
         # Base query: join with branch to filter by company
-        query = db.query(Transaction).join(Branch).filter(
+        query = db.query(Transaction).join(
+            Branch, Transaction.branch_id == Branch.id
+        ).filter(
             Branch.company_id == company_id
         )
 

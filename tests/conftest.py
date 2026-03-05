@@ -21,6 +21,9 @@ from app.db.models.item import Item
 from app.db.models.category import Category
 from app.db.models.stock_movement import StockMovement
 from app.db.models.association import item_categories
+from app.db.models.transaction import Transaction
+from app.db.models.transaction_line import TransactionLine
+from app.db.models.transaction_event import TransactionEvent
 
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite+pysqlite:///:memory:"
 
