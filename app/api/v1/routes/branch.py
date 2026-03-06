@@ -40,8 +40,8 @@ def get_branches_by_company(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get branches from the authenticated user's company.
-    Admins see all branches. Employees see all or only their assigned branch.
+    Get all branches from the authenticated user's company.
+    All active users can access all branches in their company.
     """
     branches = BranchService.get_branches_by_company(db, current_user)
     return branches

@@ -383,7 +383,7 @@ async def test_get_branches_by_company_employee_no_branch(client, employee_no_br
 
 @pytest.mark.asyncio
 async def test_get_branches_by_company_employee_with_branch(client, branch_with_employee, branch_empty):
-    """An employee assigned to a branch can only view their branch"""
+    """An employee assigned to a branch can view all company branches"""
     employee = branch_with_employee.users[0]
     token = get_token(employee)
     
@@ -394,8 +394,10 @@ async def test_get_branches_by_company_employee_with_branch(client, branch_with_
     
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 1
-    assert data[0]["id"] == branch_with_employee.id
+    assert len(data) == 2
+    branch_ids = [b["id"] for b in data]
+    assert branch_with_employee.id in branch_ids
+    assert branch_empty.id in branch_ids
 
 
 # ==================== UPDATE TESTS ====================

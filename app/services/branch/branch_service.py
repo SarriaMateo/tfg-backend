@@ -79,19 +79,13 @@ class BranchService:
         db: Session,
         current_user: User
     ) -> list[Branch]:
+        """
+        Get all branches from the authenticated user's company.
+        All active users can access all branches of their company.
+        """
         UserService.validate_user_active(current_user)
         
-        if current_user.role == Role.ADMIN or current_user.branch_id is None:
-            return BranchRepository.get_by_company_id(db, current_user.company_id)
-
-        branch = BranchRepository.get_by_id(db, current_user.branch_id)
-        if not branch or branch.company_id != current_user.company_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="BRANCH_NOT_FOUND"
-            )
-
-        return [branch]
+        return BranchRepository.get_by_company_id(db, current_user.company_id)
 
     @staticmethod
     def update_branch(
