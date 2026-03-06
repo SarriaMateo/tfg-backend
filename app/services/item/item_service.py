@@ -349,7 +349,7 @@ class ItemService:
         List items with filters, search, pagination, sorting and stock calculation.
         
         Filters:
-        - is_active: Filter by active status
+        - is_active: Filter by active status (EMPLOYEE users are always forced to active items)
         - category_id: Filter by category
         - unit: Filter by unit of measure
         
@@ -376,6 +376,11 @@ class ItemService:
                     detail="INVALID_UNIT"
                 )
 
+        # EMPLOYEE users always see only active items
+        effective_is_active = is_active
+        if current_user.role == Role.EMPLOYEE:
+            effective_is_active = True
+
         # Validate category belongs to user's company if provided
         if category_id is not None:
             category = CategoryRepository.get_by_id_and_company(
@@ -400,7 +405,7 @@ class ItemService:
                 company_id=current_user.company_id,
                 page=1,
                 page_size=10000,  # Large number to get all items
-                is_active=is_active,
+                is_active=effective_is_active,
                 category_id=category_id,
                 unit=unit_enum,
                 search=search,
@@ -414,7 +419,7 @@ class ItemService:
                 company_id=current_user.company_id,
                 page=page,
                 page_size=page_size,
-                is_active=is_active,
+                is_active=effective_is_active,
                 category_id=category_id,
                 unit=unit_enum,
                 search=search,

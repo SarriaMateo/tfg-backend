@@ -108,6 +108,24 @@ def active_user_same_company(db_session, company_with_data):
 
 
 @pytest.fixture
+def active_admin_same_company(db_session, company_with_data):
+    company = company_with_data["company"]
+    user = User(
+        name="Active Admin",
+        username="active_items_admin",
+        hashed_password=hash_password("password123"),
+        role=Role.ADMIN,
+        is_active=True,
+        company_id=company.id,
+        branch_id=None,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
 def inactive_user_same_company(db_session, company_with_data):
     company = company_with_data["company"]
     user = User(
@@ -162,8 +180,8 @@ async def test_list_items_returns_paginated_data_and_zero_stock(client, active_u
 
     assert payload["page"] == 1
     assert payload["page_size"] == 2
-    assert payload["total"] == 3
-    assert payload["total_pages"] == 2
+    assert payload["total"] == 2
+    assert payload["total_pages"] == 1
     assert len(payload["data"]) == 2
 
     found_zero_stock_item = False
@@ -224,8 +242,8 @@ async def test_list_items_search_by_name_sku_and_brand(client, active_user_same_
     assert payload_name["data"][0]["name"] == "Apple"
     assert payload_sku["total"] == 1
     assert payload_sku["data"][0]["sku"] == "SKU003"
-    assert payload_brand["total"] == 1
-    assert payload_brand["data"][0]["brand"] == "CleanX"
+    assert payload_brand["total"] == 0
+    assert payload_brand["data"] == []
 
 
 @pytest.mark.asyncio
@@ -240,8 +258,8 @@ async def test_list_items_order_by_stock_desc(client, active_user_same_company):
     assert response.status_code == 200
     payload = response.json()
 
-    assert payload["total"] == 3
-    assert len(payload["data"]) == 3
+    assert payload["total"] == 2
+    assert len(payload["data"]) == 2
 
     first = payload["data"][0]
     second = payload["data"][1]
@@ -250,3 +268,20 @@ async def test_list_items_order_by_stock_desc(client, active_user_same_company):
     second_total_stock = sum(float(branch["stock"]) for branch in second["stock_by_branch"])
 
     assert first_total_stock >= second_total_stock
+
+
+@pytest.mark.asyncio
+async def test_list_items_admin_sees_active_and_inactive_by_default(client, active_admin_same_company):
+    token = build_token(active_admin_same_company)
+
+    response = await client.get(
+        "/api/v1/items",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["total"] == 3
+    item_names = [item["name"] for item in payload["data"]]
+    assert "Soap" in item_names
