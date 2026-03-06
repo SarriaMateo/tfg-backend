@@ -384,7 +384,7 @@ async def test_get_company_users_non_admin(client, employee_user):
 
 @pytest.mark.asyncio
 async def test_get_company_users_employee_with_branch_no_param(client, employee_user_with_branch):
-    """An employee with branch_id cannot list all users without branch_id param"""
+    """An employee with branch_id sees users from their branch plus unassigned users"""
     token = get_token(employee_user_with_branch)
     
     response = await client.get(
@@ -392,30 +392,16 @@ async def test_get_company_users_employee_with_branch_no_param(client, employee_
         headers={"Authorization": f"Bearer {token}"}
     )
     
-    assert response.status_code == 403
-    assert response.json()["detail"] == "BRANCH_USERS_CANNOT_LIST_ALL_USERS"
-
-
-@pytest.mark.asyncio
-async def test_get_company_users_employee_with_branch_matching_param(client, employee_user_with_branch):
-    """An employee with branch_id can list users with matching branch_id param"""
-    token = get_token(employee_user_with_branch)
-    
-    response = await client.get(
-        f"/api/v1/users?branch_id={employee_user_with_branch.branch_id}",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    
     assert response.status_code == 200
     data = response.json()
-    # Should include users with that branch_id and users without branch_id
-    assert len(data) >= 1  # At least the requesting user itself and admin without branch
+    usernames = [u["username"] for u in data]
+    assert "admin_user" in usernames
+    assert "employee_branch" in usernames
 
 
 @pytest.mark.asyncio
-async def test_get_company_users_employee_with_branch_wrong_param(client, employee_user_with_branch, admin_user, db_session):
-    """An employee cannot list users with a different branch_id"""
-    # Create another branch
+async def test_get_company_users_employee_with_branch_ignores_branch_query_param(client, employee_user_with_branch, admin_user, db_session):
+    """Branch scope comes from token and ignores any branch_id query param"""
     another_branch = Branch(
         name="Another Branch",
         address="Another Address",
@@ -424,7 +410,7 @@ async def test_get_company_users_employee_with_branch_wrong_param(client, employ
     db_session.add(another_branch)
     db_session.commit()
     db_session.refresh(another_branch)
-    
+
     token = get_token(employee_user_with_branch)
     
     response = await client.get(
@@ -432,8 +418,47 @@ async def test_get_company_users_employee_with_branch_wrong_param(client, employ
         headers={"Authorization": f"Bearer {token}"}
     )
     
-    assert response.status_code == 403
-    assert response.json()["detail"] == "BRANCH_MISMATCH"
+    assert response.status_code == 200
+    data = response.json()
+    usernames = [u["username"] for u in data]
+    assert "admin_user" in usernames
+    assert "employee_branch" in usernames
+
+
+@pytest.mark.asyncio
+async def test_get_company_users_employee_with_branch_excludes_other_branch_users(client, employee_user_with_branch, admin_user, db_session):
+    """An employee with branch_id does not receive users from other branches"""
+    # Create another branch
+    another_branch = Branch(
+        name="Another Branch",
+        address="Another Address",
+        company_id=admin_user.company_id
+    )
+    db_session.add(another_branch)
+    db_session.flush()
+    user_other_branch = User(
+        name="Other Branch User",
+        username="other_branch_user",
+        hashed_password=hash_password("emp123"),
+        role=Role.EMPLOYEE,
+        company_id=admin_user.company_id,
+        branch_id=another_branch.id,
+    )
+    db_session.add(user_other_branch)
+    db_session.commit()
+    db_session.refresh(another_branch)
+    
+    token = get_token(employee_user_with_branch)
+    
+    response = await client.get(
+        "/api/v1/users",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    usernames = [u["username"] for u in data]
+    assert "other_branch_user" not in usernames
 
 
 @pytest.mark.asyncio

@@ -132,24 +132,20 @@ class UserService:
     def get_users_by_company(
         db: Session,
         current_user: User,
-        branch_id: int = None,
         is_active: bool = None
     ) -> list[User]:
         """
-        Get users from the current user's company with optional branch filtering and active status filtering.
+        Get users from the current user's company using the authenticated user's branch scope.
         
-        Rules:
-        - If branch_id is None/null: Only users without branch_id (admins) can view all users from company
-        - If branch_id is provided: 
-          - User must have the same branch_id they are requesting
-          - Returns users with that branch_id + users without branch_id
+                Rules:
+                - If current_user.branch_id is None: returns all users from company
+                - If current_user.branch_id is set: returns users from that branch + users without branch_id
         - MANAGER/EMPLOYEE users: Always see only active users (is_active=True)
         - ADMIN users: See all users by default, unless is_active is explicitly set
         
         Args:
             db: Database session
             current_user: The authenticated user making the request
-            branch_id: Optional branch_id to filter users
             is_active: Optional filter for user active status (only respected for ADMIN)
         
         Returns:
@@ -167,27 +163,17 @@ class UserService:
             # Admin can specify is_active, or see all if not specified
             active_filter = is_active
         
-        # If no branch_id filter is requested
-        if branch_id is None:
-            # Only users without a branch assigned can list all company users
-            if current_user.branch_id is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="BRANCH_USERS_CANNOT_LIST_ALL_USERS"
-                )
-            # Can only view all users, no specific role requirement for listing all
+        # Users without assigned branch can list all users from their company
+        if current_user.branch_id is None:
             return UserRepository.get_by_company_id(db, current_user.company_id, is_active=active_filter)
-        
-        # If a specific branch_id is requested
-        else:
-            # User must have the same branch_id they are requesting
-            if current_user.branch_id != branch_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="BRANCH_MISMATCH"
-                )
-            # Return users with that branch_id + users without branch_id
-            return UserRepository.get_by_company_and_branch(db, current_user.company_id, branch_id, is_active=active_filter)
+
+        # Users assigned to a branch only see users from their branch + unassigned users
+        return UserRepository.get_by_company_and_branch(
+            db,
+            current_user.company_id,
+            current_user.branch_id,
+            is_active=active_filter,
+        )
 
     @staticmethod
     def update_user(
