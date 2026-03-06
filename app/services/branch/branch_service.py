@@ -77,15 +77,36 @@ class BranchService:
     @staticmethod
     def get_branches_by_company(
         db: Session,
-        current_user: User
+        current_user: User,
+        is_active: bool = None
     ) -> list[Branch]:
         """
-        Get all branches from the authenticated user's company.
-        All active users can access all branches of their company.
+        Get branches from the authenticated user's company with optional active status filtering.
+        
+        Rules:
+        - MANAGER/EMPLOYEE users: Always see only active branches (is_active=True)
+        - ADMIN users: See all branches by default, unless is_active is explicitly set
+        
+        Args:
+            db: Database session
+            current_user: The authenticated user making the request
+            is_active: Optional filter for branch active status (only respected for ADMIN)
+        
+        Returns:
+            List of Branch objects matching the criteria
         """
         UserService.validate_user_active(current_user)
         
-        return BranchRepository.get_by_company_id(db, current_user.company_id)
+        # Determine is_active filter based on role
+        active_filter = None
+        if current_user.role != Role.ADMIN:
+            # Non-admin users only see active branches
+            active_filter = True
+        else:
+            # Admin can specify is_active, or see all if not specified
+            active_filter = is_active
+        
+        return BranchRepository.get_by_company_id(db, current_user.company_id, is_active=active_filter)
 
     @staticmethod
     def update_branch(

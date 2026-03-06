@@ -65,6 +65,24 @@ def employee_user_with_branch(db_session, admin_user, branch):
 
 
 @pytest.fixture
+def inactive_employee_user(db_session, admin_user):
+    """Create an inactive employee user"""
+    user = User(
+        name="Inactive Employee",
+        username="inactive_employee",
+        hashed_password=hash_password("emp123"),
+        role=Role.EMPLOYEE,
+        company_id=admin_user.company_id,
+        branch_id=None,
+        is_active=False,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
 def other_company_admin(db_session):
     """Create an admin from another company"""
     company = Company(
@@ -416,6 +434,83 @@ async def test_get_company_users_employee_with_branch_wrong_param(client, employ
     
     assert response.status_code == 403
     assert response.json()["detail"] == "BRANCH_MISMATCH"
+
+
+@pytest.mark.asyncio
+async def test_get_company_users_employee_only_sees_active_users(client, employee_user, inactive_employee_user):
+    """An employee always sees only active users"""
+    token = get_token(employee_user)
+    
+    response = await client.get(
+        "/api/v1/users",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    # Should have admin_user + employee_user (both active), but NOT inactive_employee_user
+    assert len(data) == 2
+    usernames = [u["username"] for u in data]
+    assert "admin_user" in usernames
+    assert "employee_user" in usernames
+    assert inactive_employee_user.username not in usernames
+
+
+@pytest.mark.asyncio
+async def test_get_company_users_admin_sees_all_by_default(client, admin_user, employee_user, inactive_employee_user):
+    """An admin sees all users by default (active and inactive)"""
+    token = get_admin_token(admin_user)
+    
+    response = await client.get(
+        "/api/v1/users",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    # Should have admin + employee (active) + inactive_employee (inactive)
+    assert len(data) == 3
+    usernames = [u["username"] for u in data]
+    assert "admin_user" in usernames
+    assert "employee_user" in usernames
+    assert "inactive_employee" in usernames
+
+
+@pytest.mark.asyncio
+async def test_get_company_users_admin_filters_by_is_active_true(client, admin_user, employee_user, inactive_employee_user):
+    """An admin can filter to see only active users"""
+    token = get_admin_token(admin_user)
+    
+    response = await client.get(
+        "/api/v1/users?is_active=true",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    # Should have admin_user + employee_user (both active), but NOT inactive
+    assert len(data) == 2
+    usernames = [u["username"] for u in data]
+    assert "admin_user" in usernames
+    assert "employee_user" in usernames
+    assert "inactive_employee" not in usernames
+
+
+@pytest.mark.asyncio
+async def test_get_company_users_admin_filters_by_is_active_false(client, admin_user, inactive_employee_user):
+    """An admin can filter to see only inactive users"""
+    token = get_admin_token(admin_user)
+    
+    response = await client.get(
+        "/api/v1/users?is_active=false",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    # Should only have inactive users
+    assert len(data) == 1
+    assert data[0]["username"] == "inactive_employee"
 
 
 # ==================== UPDATE TESTS ====================

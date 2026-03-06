@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.db.session import get_db
 from app.schemas.branch import BranchCreate, BranchUpdate, BranchResponse
@@ -36,14 +37,20 @@ def create_branch(
     status_code=status.HTTP_200_OK
 )
 def get_branches_by_company(
+    is_active: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get all branches from the authenticated user's company.
-    All active users can access all branches in their company.
+    Get branches from the authenticated user's company with optional active status filter.
+    
+    Query parameters:
+    - is_active: Optional active status filter (only ADMIN users can vary this; others always see active branches)
+    
+    - MANAGER/EMPLOYEE: Always see only active branches
+    - ADMIN: See all branches by default, or filter by is_active if specified
     """
-    branches = BranchService.get_branches_by_company(db, current_user)
+    branches = BranchService.get_branches_by_company(db, current_user, is_active)
     return branches
 
 

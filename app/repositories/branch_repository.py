@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from typing import Optional
 from app.db.models.branch import Branch
 
 
@@ -9,8 +10,11 @@ class BranchRepository:
         return db.query(Branch).filter(Branch.id == branch_id).first()
 
     @staticmethod
-    def get_by_company_id(db: Session, company_id: int) -> list[Branch]:
-        return db.query(Branch).filter(Branch.company_id == company_id).all()
+    def get_by_company_id(db: Session, company_id: int, is_active: Optional[bool] = None) -> list[Branch]:
+        query = db.query(Branch).filter(Branch.company_id == company_id)
+        if is_active is not None:
+            query = query.filter(Branch.is_active.is_(is_active))
+        return query.all()
 
     @staticmethod
     def get_by_name_and_company(db: Session, name: str, company_id: int) -> Branch:

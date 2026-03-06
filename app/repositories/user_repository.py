@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
+from typing import Optional
 from app.db.models.user import User, Role
 
 
@@ -20,19 +21,24 @@ class UserRepository:
         return user
 
     @staticmethod
-    def get_by_company_id(db: Session, company_id: int) -> list[User]:
-        return db.query(User).filter(User.company_id == company_id).all()
+    def get_by_company_id(db: Session, company_id: int, is_active: Optional[bool] = None) -> list[User]:
+        query = db.query(User).filter(User.company_id == company_id)
+        if is_active is not None:
+            query = query.filter(User.is_active.is_(is_active))
+        return query.all()
 
     @staticmethod
-    def get_by_company_and_branch(db: Session, company_id: int, branch_id: int) -> list[User]:
+    def get_by_company_and_branch(db: Session, company_id: int, branch_id: int, is_active: Optional[bool] = None) -> list[User]:
         """Get users from a specific branch and company, including users without a branch assigned."""
-        from sqlalchemy import or_
-        return db.query(User).filter(
+        query = db.query(User).filter(
             and_(
                 User.company_id == company_id,
                 or_(User.branch_id == branch_id, User.branch_id.is_(None))
             )
-        ).all()
+        )
+        if is_active is not None:
+            query = query.filter(User.is_active.is_(is_active))
+        return query.all()
 
     @staticmethod
     def get_by_company_and_role(db: Session, company_id: int, role: Role) -> list[User]:

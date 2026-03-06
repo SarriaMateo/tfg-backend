@@ -58,17 +58,23 @@ def get_user(
 )
 def get_company_users(
     branch_id: Optional[int] = Query(None, ge=1),
+    is_active: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get users from the authenticated user's company with optional branch filtering.
+    Get users from the authenticated user's company with optional filters.
     
-    - If branch_id is not provided (null): Returns all users from company (requires user without branch_id)
-    - If branch_id is provided: Returns users with that branch_id + users without branch_id
-      (requires user to have the same branch_id)
+    Query parameters:
+    - branch_id: Optional branch filter (only users without a branch_id can use this without specifying a value)
+    - is_active: Optional active status filter (only ADMIN users can vary this; others always see active users)
+    
+    - If branch_id is not provided: Returns all users from company (requires user without branch_id)
+    - If branch_id is provided: Returns users with that branch_id + users without branch_id (same branch_id required)
+    - MANAGER/EMPLOYEE: Always see only active users
+    - ADMIN: See all users by default, or filter by is_active if specified
     """
-    users = UserService.get_users_by_company(db, current_user, branch_id)
+    users = UserService.get_users_by_company(db, current_user, branch_id, is_active)
     return users
 
 

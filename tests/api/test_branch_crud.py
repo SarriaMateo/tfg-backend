@@ -87,6 +87,21 @@ def branch_empty(db_session, admin_user):
 
 
 @pytest.fixture
+def inactive_branch(db_session, admin_user):
+    """Create an inactive branch"""
+    branch = Branch(
+        name="Inactive Branch",
+        address="789 Inactive St",
+        company_id=admin_user.company_id,
+        is_active=False
+    )
+    db_session.add(branch)
+    db_session.commit()
+    db_session.refresh(branch)
+    return branch
+
+
+@pytest.fixture
 def other_company_admin(db_session):
     """Create an admin from another company"""
     company = Company(
@@ -398,6 +413,78 @@ async def test_get_branches_by_company_employee_with_branch(client, branch_with_
     branch_ids = [b["id"] for b in data]
     assert branch_with_employee.id in branch_ids
     assert branch_empty.id in branch_ids
+
+
+@pytest.mark.asyncio
+async def test_get_branches_employee_only_sees_active_branches(client, employee_no_branch, branch_with_employee, inactive_branch):
+    """An employee always sees only active branches"""
+    token = get_token(employee_no_branch)
+    
+    response = await client.get(
+        "/api/v1/branches",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    # Should have branch_with_employee (active), but NOT inactive_branch
+    assert len(data) == 1
+    assert data[0]["name"] == "Branch With Employee"
+    assert inactive_branch.id not in [b["id"] for b in data]
+
+
+@pytest.mark.asyncio
+async def test_get_branches_admin_sees_all_by_default(client, admin_user, branch_with_employee, inactive_branch):
+    """An admin sees all branches by default (active and inactive)"""
+    token = get_admin_token(admin_user)
+    
+    response = await client.get(
+        "/api/v1/branches",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    # Should have branch_with_employee (active) + inactive_branch
+    assert len(data) == 2
+    branch_ids = [b["id"] for b in data]
+    assert branch_with_employee.id in branch_ids
+    assert inactive_branch.id in branch_ids
+
+
+@pytest.mark.asyncio
+async def test_get_branches_admin_filters_by_is_active_true(client, admin_user, branch_with_employee, inactive_branch):
+    """An admin can filter to see only active branches"""
+    token = get_admin_token(admin_user)
+    
+    response = await client.get(
+        "/api/v1/branches?is_active=true",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    # Should only have active branches
+    assert len(data) == 1
+    assert data[0]["id"] == branch_with_employee.id
+    assert inactive_branch.id not in [b["id"] for b in data]
+
+
+@pytest.mark.asyncio
+async def test_get_branches_admin_filters_by_is_active_false(client, admin_user, inactive_branch):
+    """An admin can filter to see only inactive branches"""
+    token = get_admin_token(admin_user)
+    
+    response = await client.get(
+        "/api/v1/branches?is_active=false",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    # Should only have inactive branches
+    assert len(data) == 1
+    assert data[0]["id"] == inactive_branch.id
 
 
 # ==================== UPDATE TESTS ====================
