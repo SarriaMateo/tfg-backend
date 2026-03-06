@@ -32,7 +32,7 @@ def admin_user(db_session):
 
 @pytest.fixture
 def employee_user(db_session, admin_user):
-    """Create an employee user in the same company"""
+    """Create an employee user in the same company without branch"""
     user = User(
         name="Employee User",
         username="employee_user",
@@ -40,6 +40,23 @@ def employee_user(db_session, admin_user):
         role=Role.EMPLOYEE,
         company_id=admin_user.company_id,
         branch_id=None,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def employee_user_with_branch(db_session, admin_user, branch):
+    """Create an employee user assigned to a branch"""
+    user = User(
+        name="Employee With Branch",
+        username="employee_branch",
+        hashed_password=hash_password("emp123"),
+        role=Role.EMPLOYEE,
+        company_id=admin_user.company_id,
+        branch_id=branch.id,
     )
     db_session.add(user)
     db_session.commit()
@@ -334,7 +351,7 @@ async def test_get_company_users_admin(client, admin_user, employee_user, db_ses
 
 @pytest.mark.asyncio
 async def test_get_company_users_non_admin(client, employee_user):
-    """An employee cannot view all users"""
+    """An employee without branch_id can view all users"""
     token = get_token(employee_user)
     
     response = await client.get(
@@ -342,8 +359,63 @@ async def test_get_company_users_non_admin(client, employee_user):
         headers={"Authorization": f"Bearer {token}"}
     )
     
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2  # admin_user + employee_user
+
+
+@pytest.mark.asyncio
+async def test_get_company_users_employee_with_branch_no_param(client, employee_user_with_branch):
+    """An employee with branch_id cannot list all users without branch_id param"""
+    token = get_token(employee_user_with_branch)
+    
+    response = await client.get(
+        "/api/v1/users",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
     assert response.status_code == 403
-    assert response.json()["detail"] == "INSUFFICIENT_ROLE"
+    assert response.json()["detail"] == "BRANCH_USERS_CANNOT_LIST_ALL_USERS"
+
+
+@pytest.mark.asyncio
+async def test_get_company_users_employee_with_branch_matching_param(client, employee_user_with_branch):
+    """An employee with branch_id can list users with matching branch_id param"""
+    token = get_token(employee_user_with_branch)
+    
+    response = await client.get(
+        f"/api/v1/users?branch_id={employee_user_with_branch.branch_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    # Should include users with that branch_id and users without branch_id
+    assert len(data) >= 1  # At least the requesting user itself and admin without branch
+
+
+@pytest.mark.asyncio
+async def test_get_company_users_employee_with_branch_wrong_param(client, employee_user_with_branch, admin_user, db_session):
+    """An employee cannot list users with a different branch_id"""
+    # Create another branch
+    another_branch = Branch(
+        name="Another Branch",
+        address="Another Address",
+        company_id=admin_user.company_id
+    )
+    db_session.add(another_branch)
+    db_session.commit()
+    db_session.refresh(another_branch)
+    
+    token = get_token(employee_user_with_branch)
+    
+    response = await client.get(
+        f"/api/v1/users?branch_id={another_branch.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    assert response.status_code == 403
+    assert response.json()["detail"] == "BRANCH_MISMATCH"
 
 
 # ==================== UPDATE TESTS ====================

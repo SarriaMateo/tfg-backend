@@ -24,6 +24,17 @@ class UserRepository:
         return db.query(User).filter(User.company_id == company_id).all()
 
     @staticmethod
+    def get_by_company_and_branch(db: Session, company_id: int, branch_id: int) -> list[User]:
+        """Get users from a specific branch and company, including users without a branch assigned."""
+        from sqlalchemy import or_
+        return db.query(User).filter(
+            and_(
+                User.company_id == company_id,
+                or_(User.branch_id == branch_id, User.branch_id.is_(None))
+            )
+        ).all()
+
+    @staticmethod
     def get_by_company_and_role(db: Session, company_id: int, role: Role) -> list[User]:
         return db.query(User).filter(
             and_(User.company_id == company_id, User.role == role)

@@ -131,22 +131,50 @@ class UserService:
     @staticmethod
     def get_users_by_company(
         db: Session,
-        admin_user: User
+        current_user: User,
+        branch_id: int = None
     ) -> list[User]:
         """
-        Get all users from the admin's company.
-        Only admins can view all users.
+        Get users from the current user's company with optional branch filtering.
+        
+        Rules:
+        - If branch_id is None/null: Only users without branch_id (admins) can view all users from company
+        - If branch_id is provided: 
+          - User must have the same branch_id they are requesting
+          - Returns users with that branch_id + users without branch_id
+        
+        Args:
+            db: Database session
+            current_user: The authenticated user making the request
+            branch_id: Optional branch_id to filter users. If None, returns all company users if requester has no branch.
+        
+        Returns:
+            List of User objects matching the criteria
         """
         # Verify that the authenticated user is active
-        UserService.validate_user_active(admin_user)
+        UserService.validate_user_active(current_user)
         
-        if admin_user.role != Role.ADMIN:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="INSUFFICIENT_ROLE"
-            )
-
-        return UserRepository.get_by_company_id(db, admin_user.company_id)
+        # If no branch_id filter is requested
+        if branch_id is None:
+            # Only users without a branch assigned can list all company users
+            if current_user.branch_id is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="BRANCH_USERS_CANNOT_LIST_ALL_USERS"
+                )
+            # Can only view all users, no specific role requirement for listing all
+            return UserRepository.get_by_company_id(db, current_user.company_id)
+        
+        # If a specific branch_id is requested
+        else:
+            # User must have the same branch_id they are requesting
+            if current_user.branch_id != branch_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="BRANCH_MISMATCH"
+                )
+            # Return users with that branch_id + users without branch_id
+            return UserRepository.get_by_company_and_branch(db, current_user.company_id, branch_id)
 
     @staticmethod
     def update_user(

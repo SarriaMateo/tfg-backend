@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.db.session import get_db
 from app.db.models.user import User
@@ -56,14 +57,18 @@ def get_user(
     status_code=status.HTTP_200_OK
 )
 def get_company_users(
+    branch_id: Optional[int] = Query(None, ge=1),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles("ADMIN"))
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Get all users from the authenticated user's company.
-    Only admins can view all users.
+    Get users from the authenticated user's company with optional branch filtering.
+    
+    - If branch_id is not provided (null): Returns all users from company (requires user without branch_id)
+    - If branch_id is provided: Returns users with that branch_id + users without branch_id
+      (requires user to have the same branch_id)
     """
-    users = UserService.get_users_by_company(db, current_user)
+    users = UserService.get_users_by_company(db, current_user, branch_id)
     return users
 
 
