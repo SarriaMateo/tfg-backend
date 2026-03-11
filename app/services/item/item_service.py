@@ -221,6 +221,13 @@ class ItemService:
                 detail="ITEM_NOT_FOUND"
             )
 
+        transaction_lines_count = ItemRepository.count_transaction_lines_by_item_id(db, item_id)
+        if transaction_lines_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ITEM_HAS_TRANSACTION_LINES"
+            )
+
         # Delete image if it exists
         if item.image_url:
             ItemImageHandler.delete_image(item.image_url)

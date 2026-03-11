@@ -3,6 +3,7 @@ from app.core.security import hash_password, create_access_token
 from app.db.models.user import Role, User
 from app.db.models.company import Company
 from app.db.models.branch import Branch
+from app.db.models.transaction import Transaction, OperationType
 
 
 @pytest.fixture
@@ -637,6 +638,27 @@ async def test_delete_branch_with_users(client, admin_user, branch_with_employee
     
     assert response.status_code == 400
     assert response.json()["detail"] == "BRANCH_HAS_USERS"
+
+
+@pytest.mark.asyncio
+async def test_delete_branch_with_transactions(client, admin_user, branch_empty, db_session):
+    """Cannot delete a branch that has transactions"""
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        branch_id=branch_empty.id,
+    )
+    db_session.add(transaction)
+    db_session.commit()
+
+    token = get_admin_token(admin_user)
+
+    response = await client.delete(
+        f"/api/v1/branches/{branch_empty.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "BRANCH_HAS_TRANSACTIONS"
 
 
 @pytest.mark.asyncio

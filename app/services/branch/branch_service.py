@@ -199,4 +199,11 @@ class BranchService:
                 detail="BRANCH_HAS_USERS"
             )
 
+        transactions_count = BranchRepository.count_transactions_by_branch_id(db, branch_id)
+        if transactions_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="BRANCH_HAS_TRANSACTIONS"
+            )
+
         BranchRepository.delete(db, branch)

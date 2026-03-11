@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.db.models.branch import Branch
+from app.db.models.transaction import Transaction
 
 
 class BranchRepository:
@@ -38,6 +39,10 @@ class BranchRepository:
     def delete(db: Session, branch: Branch) -> None:
         db.delete(branch)
         db.flush()
+
+    @staticmethod
+    def count_transactions_by_branch_id(db: Session, branch_id: int) -> int:
+        return db.query(Transaction).filter(Transaction.branch_id == branch_id).count()
 
     @staticmethod
     def commit(db: Session) -> None:

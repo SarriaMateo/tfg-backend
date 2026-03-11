@@ -385,6 +385,7 @@ class TestItemServiceDelete:
         item.company_id = admin_user.company_id
         item.image_url = None
         mock_repo.get_by_id.return_value = item
+        mock_repo.count_transaction_lines_by_item_id.return_value = 0
 
         ItemService.delete_item(mock_db, 1, admin_user)
 
@@ -423,6 +424,24 @@ class TestItemServiceDelete:
             ItemService.delete_item(mock_db, 1, admin_user)
 
         assert exc_info.value.status_code == 403
+
+    @patch("app.services.item.item_service.ItemRepository")
+    def test_delete_item_with_transaction_lines(self, mock_repo, mock_db, admin_user):
+        """Cannot delete an item referenced by transaction lines"""
+        item = Mock(spec=Item)
+        item.id = 1
+        item.company_id = admin_user.company_id
+        item.image_url = None
+        mock_repo.get_by_id.return_value = item
+        mock_repo.count_transaction_lines_by_item_id.return_value = 1
+
+        with pytest.raises(HTTPException) as exc_info:
+            ItemService.delete_item(mock_db, 1, admin_user)
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == "ITEM_HAS_TRANSACTION_LINES"
+        mock_repo.delete.assert_not_called()
+        mock_repo.commit.assert_not_called()
 
 
 class TestItemServiceAssignCategories:

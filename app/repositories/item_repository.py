@@ -3,6 +3,7 @@ from sqlalchemy import and_, or_
 from typing import Optional, Tuple
 from app.db.models.item import Item, Unit
 from app.db.models.association import item_categories
+from app.db.models.transaction_line import TransactionLine
 
 
 class ItemRepository:
@@ -119,6 +120,10 @@ class ItemRepository:
     def delete(db: Session, item: Item) -> None:
         db.delete(item)
         db.flush()
+
+    @staticmethod
+    def count_transaction_lines_by_item_id(db: Session, item_id: int) -> int:
+        return db.query(TransactionLine).filter(TransactionLine.item_id == item_id).count()
 
     @staticmethod
     def commit(db: Session) -> None:
