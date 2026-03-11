@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta
 from app.core.security import hash_password, create_access_token
 from app.db.models.user import User, Role
 from app.db.models.company import Company
@@ -146,6 +147,7 @@ async def test_create_transaction_in_success(client, company_with_transactions_d
     assert result["branch_id"] == branch.id
     assert len(result["lines"]) == 2
     assert result["description"] == "Initial stock entry"
+    assert "has_document" not in result
 
 
 @pytest.mark.asyncio
@@ -846,3 +848,103 @@ async def test_user_with_branch_only_sees_own_branch_transactions(
     result = response.json()
     assert result["total"] == 1  # Only sees branch_a transaction
     assert result["data"][0]["branch_id"] == branch_a.id
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_user_branch_overrides_branch_filter_param(
+    client, db_session, company_with_transactions_data
+):
+    """Test that branch filter param is ignored for users assigned to a specific branch"""
+    data = company_with_transactions_data
+    user = data["users"]["employee_branch_a"]
+    branch_a = data["branches"][0]
+    branch_b = data["branches"][1]
+    item = data["items"][0]
+
+    tx_a = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch_a.id
+    )
+    db_session.add(tx_a)
+    db_session.flush()
+
+    tx_b = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch_b.id
+    )
+    db_session.add(tx_b)
+    db_session.flush()
+
+    for tx in [tx_a, tx_b]:
+        db_session.add(TransactionLine(quantity=10, item_id=item.id, transaction_id=tx.id))
+
+    db_session.commit()
+
+    token = build_token(user)
+
+    response = await client.get(
+        f"/api/v1/transactions?branch_id={branch_b.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["total"] == 1
+    assert result["data"][0]["branch_id"] == branch_a.id
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_filter_by_date_range(
+    client, db_session, company_with_transactions_data
+):
+    """Test filtering transactions by start_date and end_date"""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    base_date = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
+
+    tx_old = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id,
+        created_at=base_date - timedelta(days=5)
+    )
+    tx_in_range = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id,
+        created_at=base_date - timedelta(days=2)
+    )
+    tx_new = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id,
+        created_at=base_date
+    )
+
+    db_session.add_all([tx_old, tx_in_range, tx_new])
+    db_session.flush()
+
+    for tx in [tx_old, tx_in_range, tx_new]:
+        db_session.add(TransactionLine(quantity=10, item_id=item.id, transaction_id=tx.id))
+
+    db_session.commit()
+
+    token = build_token(user)
+    start_date = (base_date - timedelta(days=3)).date().isoformat()
+    end_date = (base_date - timedelta(days=1)).date().isoformat()
+
+    response = await client.get(
+        f"/api/v1/transactions?start_date={start_date}&end_date={end_date}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["total"] == 1
+    assert result["data"][0]["id"] == tx_in_range.id
+    assert "has_document" not in result["data"][0]

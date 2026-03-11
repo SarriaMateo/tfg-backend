@@ -2,7 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Optional, List, Tuple
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 
 from app.db.models.transaction import Transaction, OperationType, TransactionStatus
@@ -525,6 +525,8 @@ class TransactionService:
         status: Optional[TransactionStatus] = None,
         performed_by: Optional[int] = None,
         item_id: Optional[int] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
         search: Optional[str] = None,
         order_by: str = "created_at",
         order_desc: bool = True
@@ -549,6 +551,8 @@ class TransactionService:
             status=status,
             performed_by=performed_by,
             item_id=item_id,
+            start_date=start_date,
+            end_date=end_date,
             search=search,
             order_by=order_by,
             order_desc=order_desc

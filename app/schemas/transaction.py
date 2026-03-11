@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator, computed_field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -57,12 +57,6 @@ class TransactionResponse(BaseModel):
     class Config:
         from_attributes = True
 
-    @computed_field
-    @property
-    def has_document(self) -> bool:
-        """True if document_url exists, False otherwise"""
-        return self.document_url is not None
-
 
 class TransactionDetailResponse(BaseModel):
     """Detailed transaction response including events"""
@@ -79,12 +73,6 @@ class TransactionDetailResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-    @computed_field
-    @property
-    def has_document(self) -> bool:
-        """True if document_url exists, False otherwise"""
-        return self.document_url is not None
 
 
 class TransactionEventResponse(BaseModel):

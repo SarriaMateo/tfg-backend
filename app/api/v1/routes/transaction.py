@@ -3,6 +3,7 @@ from starlette.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional, Literal, List
 from decimal import Decimal
+from datetime import date
 
 from app.db.session import get_db
 from app.schemas.transaction import (
@@ -37,6 +38,8 @@ def list_transactions(
     status: Optional[TransactionStatus] = Query(None),
     performed_by: Optional[int] = Query(None, ge=1),
     item_id: Optional[int] = Query(None, ge=1),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
     search: Optional[str] = Query(None),
     order_by: Literal["created_at", "total_items"] = Query("created_at"),
     order_desc: bool = Query(True),
@@ -53,6 +56,8 @@ def list_transactions(
     - status: Filter by status (PENDING, CANCELLED, COMPLETED)
     - performed_by: Filter by user who performed action
     - item_id: Filter by item in transaction lines
+    - start_date: Filter transactions created on/after this date
+    - end_date: Filter transactions created on/before this date
     - search: Search in item names and SKUs
     
     Ordering:
@@ -69,6 +74,8 @@ def list_transactions(
         status=status,
         performed_by=performed_by,
         item_id=item_id,
+        start_date=start_date,
+        end_date=end_date,
         search=search,
         order_by=order_by,
         order_desc=order_desc

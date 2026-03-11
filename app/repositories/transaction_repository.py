@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func, desc, asc
 from typing import Optional, Tuple, List
+from datetime import date, datetime, time
 from app.db.models.transaction import Transaction, OperationType, TransactionStatus
 from app.db.models.transaction_line import TransactionLine
 from app.db.models.transaction_event import TransactionEvent
@@ -32,6 +33,8 @@ class TransactionRepository:
         status: Optional[TransactionStatus] = None,
         performed_by: Optional[int] = None,
         item_id: Optional[int] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
         search: Optional[str] = None,
         order_by: str = "created_at",
         order_desc: bool = True
@@ -91,6 +94,14 @@ class TransactionRepository:
                     Item.sku.ilike(search_pattern)
                 )
             )
+
+        if start_date is not None:
+            start_datetime = datetime.combine(start_date, time.min)
+            query = query.filter(Transaction.created_at >= start_datetime)
+
+        if end_date is not None:
+            end_datetime = datetime.combine(end_date, time.max)
+            query = query.filter(Transaction.created_at <= end_datetime)
         
         # Remove duplicates from joins
         query = query.distinct()
