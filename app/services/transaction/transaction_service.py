@@ -15,7 +15,7 @@ from app.repositories.transaction_repository import TransactionRepository
 from app.repositories.item_repository import ItemRepository
 from app.repositories.branch_repository import BranchRepository
 from app.repositories.stock_movement_repository import StockMovementRepository
-from app.schemas.transaction import TransactionCreate, TransactionUpdate
+from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionUpdateRequest
 from app.schemas.common import PaginatedResponse
 from app.core.file_handler import TransactionDocumentHandler
 from app.services.user.user_service import UserService
@@ -308,9 +308,8 @@ class TransactionService:
     def update_transaction(
         db: Session,
         transaction_id: int,
-        transaction_data: TransactionUpdate,
+        transaction_data: TransactionUpdateRequest,
         current_user: User,
-        new_lines: Optional[List] = None
     ) -> Transaction:
         """
         Update a transaction (only if status is PENDING).
@@ -324,7 +323,7 @@ class TransactionService:
         Actions:
         - Update transaction fields
         - Update transaction lines if provided
-        - Create EDITED event with metadata showing changes
+        - Create EDITED event with metadata showing old and new values
         """
         UserService.validate_user_active(current_user)
         
@@ -347,7 +346,7 @@ class TransactionService:
         # Track changes for metadata
         changes = {}
         
-        # Update fields
+        # Update description
         if transaction_data.description is not None:
             if transaction.description != transaction_data.description:
                 changes["description"] = {
@@ -357,22 +356,28 @@ class TransactionService:
             transaction.description = transaction_data.description
         
         # Update lines if provided
-        if new_lines is not None:
+        if transaction_data.lines is not None:
             # Validate items
-            item_ids = [line.item_id for line in new_lines]
-            items = TransactionService._validate_items_belong_to_company(
+            item_ids = [line.item_id for line in transaction_data.lines]
+            items = TransactionService._validate_items_for_create(
                 db, item_ids, current_user.company_id
             )
             
             # Validate quantities
-            TransactionService._validate_quantities_for_units(new_lines, items)
+            TransactionService._validate_quantities_for_units(transaction_data.lines, items)
+            
+            # Snapshot old lines before deleting
+            old_snapshot = [
+                {"item_id": l.item_id, "quantity": float(l.quantity)}
+                for l in transaction.lines
+            ]
             
             # Delete old lines
             for old_line in transaction.lines:
                 db.delete(old_line)
             
             # Create new lines
-            for line_data in new_lines:
+            for line_data in transaction_data.lines:
                 line = TransactionLine(
                     quantity=line_data.quantity,
                     item_id=line_data.item_id,
@@ -380,7 +385,14 @@ class TransactionService:
                 )
                 TransactionRepository.create_line(db, line)
             
-            changes["lines"] = "updated"
+            new_snapshot = [
+                {"item_id": l.item_id, "quantity": float(l.quantity)}
+                for l in transaction_data.lines
+            ]
+            changes["lines"] = {
+                "previous": old_snapshot,
+                "new": new_snapshot
+            }
         
         TransactionRepository.update(db, transaction)
         

@@ -88,6 +88,12 @@ class TransactionEventResponse(BaseModel):
         from_attributes = True
 
 
+class TransactionUpdateRequest(BaseModel):
+    """Payload for PUT /transactions/{id}"""
+    description: Optional[str] = Field(None, max_length=1000)
+    lines: Optional[List[TransactionLineCreate]] = None
+
+
 class TransactionUpdate(BaseModel):
     """Update transaction status or description (limited operations)"""
     status: Optional[TransactionStatus] = None

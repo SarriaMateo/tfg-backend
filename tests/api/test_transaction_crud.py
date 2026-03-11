@@ -680,7 +680,7 @@ async def test_cannot_edit_cancelled_transaction(
     
     response = await client.put(
         f"/api/v1/transactions/{transaction.id}",
-        data={"description": "Try to edit"},
+        json={"description": "Try to edit"},
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -769,7 +769,7 @@ async def test_update_transaction_description(
     
     response = await client.put(
         f"/api/v1/transactions/{transaction.id}",
-        data={"description": "Updated description"},
+        json={"description": "Updated description"},
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -777,13 +777,69 @@ async def test_update_transaction_description(
     result = response.json()
     assert result["description"] == "Updated description"
     
-    # Verify EDITED event was created
+    # Verify EDITED event metadata contains description diff
     edit_events = db_session.query(TransactionEvent).filter(
         TransactionEvent.transaction_id == transaction.id,
         TransactionEvent.action_type == ActionType.EDITED
     ).all()
     
     assert len(edit_events) == 1
+    assert edit_events[0].event_metadata["description"]["previous"] == "Original description"
+    assert edit_events[0].event_metadata["description"]["new"] == "Updated description"
+
+
+@pytest.mark.asyncio
+async def test_update_transaction_lines_metadata_contains_old_and_new(
+    client, db_session, company_with_transactions_data
+):
+    """Test that updating lines stores detailed old/new snapshot in event metadata"""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item1 = data["items"][0]
+    item2 = data["items"][1]
+
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    original_line = TransactionLine(
+        quantity=5,
+        item_id=item1.id,
+        transaction_id=transaction.id
+    )
+    db_session.add(original_line)
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=user.id
+    ))
+    db_session.commit()
+
+    token = build_token(user)
+
+    response = await client.put(
+        f"/api/v1/transactions/{transaction.id}",
+        json={"lines": [{"quantity": 20, "item_id": item2.id}]},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()["lines"]) == 1
+
+    event = db_session.query(TransactionEvent).filter(
+        TransactionEvent.transaction_id == transaction.id,
+        TransactionEvent.action_type == ActionType.EDITED
+    ).first()
+
+    assert event is not None
+    meta = event.event_metadata["lines"]
+    assert meta["previous"] == [{"item_id": item1.id, "quantity": 5.0}]
+    assert meta["new"] == [{"item_id": item2.id, "quantity": 20.0}]
 
 
 # =============================================================================

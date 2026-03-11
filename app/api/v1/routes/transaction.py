@@ -8,7 +8,7 @@ from datetime import date
 from app.db.session import get_db
 from app.schemas.transaction import (
     TransactionCreate,
-    TransactionUpdate,
+    TransactionUpdateRequest,
     TransactionResponse,
     TransactionDetailResponse,
     TransactionLineCreate,
@@ -147,8 +147,7 @@ def get_transaction(
 )
 def update_transaction(
     transaction_id: int,
-    description: Optional[str] = Form(None),
-    lines_json: Optional[str] = Form(None),  # JSON string of lines
+    update_data: TransactionUpdateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -161,26 +160,11 @@ def update_transaction(
     - If items are updated, same validations as create
     
     Actions:
-    - Updates transaction fields
-    - Updates transaction lines if provided
-    - Creates EDITED event with metadata showing changes
-    
-    Note: lines_json should be a JSON array like: [{"quantity": 10.5, "item_id": 1}, ...]
+    - Updates description and/or lines
+    - Creates EDITED event with metadata showing old and new values
     """
-    import json
-    from app.schemas.transaction import TransactionLineCreate
-    
-    # Build update data
-    update_data = TransactionUpdate(description=description)
-    
-    # Parse lines if provided
-    new_lines = None
-    if lines_json:
-        lines_data = json.loads(lines_json)
-        new_lines = [TransactionLineCreate(**line) for line in lines_data]
-    
     transaction = TransactionService.update_transaction(
-        db, transaction_id, update_data, current_user, new_lines
+        db, transaction_id, update_data, current_user
     )
     return transaction
 
