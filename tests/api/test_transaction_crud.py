@@ -203,8 +203,39 @@ async def test_create_transaction_inactive_item_fails(client, company_with_trans
         headers={"Authorization": f"Bearer {token}"}
     )
     
-    assert response.status_code == 404
-    assert "ITEM_NOT_FOUND" in response.json()["detail"]
+    assert response.status_code == 400
+    assert response.json()["detail"] == "ITEM_INACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_create_transaction_inactive_branch_fails(client, company_with_transactions_data, db_session):
+    """Test that creating transaction with inactive branch fails"""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    branch.is_active = False
+    db_session.commit()
+
+    token = build_token(user)
+
+    transaction_data = {
+        "operation_type": "IN",
+        "branch_id": branch.id,
+        "lines": [
+            {"quantity": 10, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=transaction_data,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "BRANCH_INACTIVE"
 
 
 @pytest.mark.asyncio

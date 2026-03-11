@@ -33,7 +33,12 @@ class TransactionService:
         - If user has assigned branch, can only access that branch
         """
         branch = BranchRepository.get_by_id(db, branch_id)
-        if not branch or not branch.is_active:
+        if not branch:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="BRANCH_NOT_FOUND"
+            )
+        if not branch.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="BRANCH_NOT_FOUND"
@@ -75,6 +80,66 @@ class TransactionService:
             
             items.append(item)
         
+        return items
+
+    @staticmethod
+    def _validate_branch_for_create(current_user: User, branch_id: int, db: Session) -> None:
+        """
+        Validate branch for transaction creation with explicit inactive error.
+        """
+        branch = BranchRepository.get_by_id(db, branch_id)
+        if not branch:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="BRANCH_NOT_FOUND"
+            )
+
+        if not branch.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="BRANCH_INACTIVE"
+            )
+
+        if branch.company_id != current_user.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="BRANCH_NOT_FOUND"
+            )
+
+        if current_user.branch_id and current_user.branch_id != branch_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="BRANCH_ACCESS_DENIED"
+            )
+
+    @staticmethod
+    def _validate_items_for_create(db: Session, item_ids: List[int], company_id: int) -> List[Item]:
+        """
+        Validate items for transaction creation with explicit inactive error.
+        """
+        items = []
+        for item_id in item_ids:
+            item = ItemRepository.get_by_id(db, item_id)
+            if not item:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="ITEM_NOT_FOUND"
+                )
+
+            if not item.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="ITEM_INACTIVE"
+                )
+
+            if item.company_id != company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="ITEM_NOT_FOUND"
+                )
+
+            items.append(item)
+
         return items
 
     @staticmethod
@@ -134,13 +199,13 @@ class TransactionService:
             )
         
         # Validate branch access
-        TransactionService._validate_user_can_access_branch(
+        TransactionService._validate_branch_for_create(
             current_user, transaction_data.branch_id, db
         )
         
         # Validate items
         item_ids = [line.item_id for line in transaction_data.lines]
-        items = TransactionService._validate_items_belong_to_company(
+        items = TransactionService._validate_items_for_create(
             db, item_ids, current_user.company_id
         )
         
