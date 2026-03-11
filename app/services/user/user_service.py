@@ -70,6 +70,11 @@ class UserService:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="BRANCH_NOT_FOUND"
                 )
+            if not branch.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="BRANCH_INACTIVE"
+                )
             if branch.company_id != admin_user.company_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -269,6 +274,11 @@ class UserService:
                                 status_code=status.HTTP_404_NOT_FOUND,
                                 detail="BRANCH_NOT_FOUND"
                             )
+                        if not branch.is_active:
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="BRANCH_INACTIVE"
+                            )
                         if branch.company_id != current_user.company_id:
                             raise HTTPException(
                                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -365,5 +375,11 @@ class UserService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="CANNOT_DELETE_LAST_ADMIN"
                 )
+
+        if UserRepository.count_transaction_events_by_user_id(db, user.id) > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="USER_HAS_TRANSACTION_EVENTS"
+            )
 
         UserRepository.delete(db, user)

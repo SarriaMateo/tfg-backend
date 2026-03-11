@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from typing import Optional
 from app.db.models.user import User, Role
+from app.db.models.transaction_event import TransactionEvent
 
 
 class UserRepository:
@@ -65,6 +66,10 @@ class UserRepository:
     @staticmethod
     def count_by_branch_id(db: Session, branch_id: int) -> int:
         return db.query(User).filter(User.branch_id == branch_id).count()
+
+    @staticmethod
+    def count_transaction_events_by_user_id(db: Session, user_id: int) -> int:
+        return db.query(TransactionEvent).filter(TransactionEvent.performed_by == user_id).count()
 
     @staticmethod
     def update(db: Session, user: User) -> User:

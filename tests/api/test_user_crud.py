@@ -3,6 +3,8 @@ from app.core.security import hash_password, create_access_token
 from app.db.models.user import Role, User
 from app.db.models.company import Company
 from app.db.models.branch import Branch
+from app.db.models.transaction import Transaction, OperationType
+from app.db.models.transaction_event import TransactionEvent, ActionType
 
 
 @pytest.fixture
@@ -193,6 +195,32 @@ async def test_create_user_with_branch(client, admin_user, branch):
     assert response.status_code == 201
     data = response.json()
     assert data["branch_id"] == branch.id
+
+
+@pytest.mark.asyncio
+async def test_create_user_with_inactive_branch(client, admin_user, branch, db_session):
+    """Cannot create user with inactive branch assigned"""
+    branch.is_active = False
+    db_session.commit()
+
+    token = get_admin_token(admin_user)
+
+    payload = {
+        "name": "User Inactive Branch",
+        "username": "user_inactive_branch",
+        "password": "password123",
+        "role": "EMPLOYEE",
+        "branch_id": branch.id
+    }
+
+    response = await client.post(
+        "/api/v1/users",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "BRANCH_INACTIVE"
 
 
 @pytest.mark.asyncio
@@ -756,6 +784,27 @@ async def test_update_user_branch_different_company(client, admin_user, other_co
     assert response.json()["detail"] == "BRANCH_BELONGS_TO_DIFFERENT_COMPANY"
 
 
+@pytest.mark.asyncio
+async def test_update_user_assign_inactive_branch(client, admin_user, employee_user, branch, db_session):
+    """Cannot assign an inactive branch when updating a user"""
+    branch.is_active = False
+    db_session.commit()
+
+    token = get_admin_token(admin_user)
+    payload = {
+        "branch_id": branch.id
+    }
+
+    response = await client.put(
+        f"/api/v1/users/{employee_user.id}/admin",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "BRANCH_INACTIVE"
+
+
 # ==================== DELETE TESTS ====================
 
 @pytest.mark.asyncio
@@ -769,6 +818,35 @@ async def test_delete_user_admin(client, admin_user, employee_user):
     )
     
     assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_delete_user_with_transaction_events(client, admin_user, employee_user, branch, db_session):
+    """Cannot delete a user if there are transaction events linked to that user"""
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        branch_id=branch.id,
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    event = TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=employee_user.id,
+    )
+    db_session.add(event)
+    db_session.commit()
+
+    token = get_admin_token(admin_user)
+
+    response = await client.delete(
+        f"/api/v1/users/{employee_user.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "USER_HAS_TRANSACTION_EVENTS"
 
 
 @pytest.mark.asyncio
