@@ -301,6 +301,84 @@ async def test_create_transaction_integer_quantity_validation(
 
 
 @pytest.mark.asyncio
+async def test_create_transaction_auto_complete_success_creates_created_and_completed_events(
+    client, db_session, company_with_transactions_data
+):
+    """Test creating transaction with auto_complete creates CREATED and COMPLETED events in order"""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    token = build_token(user)
+
+    transaction_data = {
+        "operation_type": "IN",
+        "description": "Auto completed entry",
+        "branch_id": branch.id,
+        "auto_complete": True,
+        "lines": [
+            {"quantity": 10, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=transaction_data,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "COMPLETED"
+
+    events = db_session.query(TransactionEvent).filter(
+        TransactionEvent.transaction_id == result["id"]
+    ).order_by(TransactionEvent.id.asc()).all()
+
+    assert len(events) == 2
+    assert events[0].action_type == ActionType.CREATED
+    assert events[1].action_type == ActionType.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_create_transaction_auto_complete_out_insufficient_stock_fails(
+    client, db_session, company_with_transactions_data
+):
+    """Test auto_complete OUT fails when stock is insufficient"""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    token = build_token(user)
+    count_before = db_session.query(Transaction).count()
+
+    transaction_data = {
+        "operation_type": "OUT",
+        "description": "Auto complete out without stock",
+        "branch_id": branch.id,
+        "auto_complete": True,
+        "lines": [
+            {"quantity": 1, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=transaction_data,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert "INSUFFICIENT_STOCK" in response.json()["detail"]
+
+    db_session.rollback()
+    count_after = db_session.query(Transaction).count()
+    assert count_after == count_before
+
+
+@pytest.mark.asyncio
 async def test_create_transaction_transfer_not_supported(
     client, company_with_transactions_data
 ):

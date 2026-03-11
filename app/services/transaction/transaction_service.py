@@ -25,6 +25,56 @@ class TransactionService:
     """Business logic service for transactions (IN and OUT only for now)"""
 
     @staticmethod
+    def _complete_transaction_in_place(
+        db: Session,
+        transaction: Transaction,
+        performed_by: int
+    ) -> None:
+        """
+        Complete a PENDING transaction in the current DB transaction.
+        - Validates stock for OUT operations
+        - Sets status to COMPLETED
+        - Creates stock movements
+        - Creates COMPLETED event
+        """
+        if transaction.operation_type == OperationType.OUT:
+            for line in transaction.lines:
+                current_stock = StockMovementRepository.get_stock_by_item_and_branch(
+                    db, line.item_id, transaction.branch_id
+                )
+
+                if current_stock - line.quantity < 0:
+                    item = ItemRepository.get_by_id(db, line.item_id)
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"INSUFFICIENT_STOCK_FOR_ITEM_{item.sku}"
+                    )
+
+        transaction.status = TransactionStatus.COMPLETED
+        TransactionRepository.update(db, transaction)
+
+        for line in transaction.lines:
+            quantity = line.quantity if transaction.operation_type == OperationType.IN else -line.quantity
+
+            stock_movement = StockMovement(
+                quantity=quantity,
+                movement_type=MovementType(transaction.operation_type.value),
+                created_at=datetime.utcnow(),
+                item_id=line.item_id,
+                branch_id=transaction.branch_id,
+                transaction_id=transaction.id
+            )
+            db.add(stock_movement)
+
+        event = TransactionEvent(
+            action_type=ActionType.COMPLETED,
+            timestamp=datetime.utcnow(),
+            transaction_id=transaction.id,
+            performed_by=performed_by
+        )
+        TransactionRepository.create_event(db, event)
+
+    @staticmethod
     def _validate_user_can_access_branch(current_user: User, branch_id: int, db: Session) -> None:
         """
         Validate that user can access a specific branch.
@@ -240,6 +290,13 @@ class TransactionService:
             performed_by=current_user.id
         )
         TransactionRepository.create_event(db, event)
+
+        if transaction_data.auto_complete:
+            TransactionService._complete_transaction_in_place(
+                db=db,
+                transaction=transaction,
+                performed_by=current_user.id
+            )
         
         TransactionRepository.commit(db)
         
@@ -441,47 +498,11 @@ class TransactionService:
         # Validate editable
         TransactionService._validate_transaction_editable(transaction)
         
-        # For OUT operations, validate stock won't go negative
-        if transaction.operation_type == OperationType.OUT:
-            for line in transaction.lines:
-                current_stock = StockMovementRepository.get_stock_by_item_and_branch(
-                    db, line.item_id, transaction.branch_id
-                )
-                
-                if current_stock - line.quantity < 0:
-                    item = ItemRepository.get_by_id(db, line.item_id)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"INSUFFICIENT_STOCK_FOR_ITEM_{item.sku}"
-                    )
-        
-        # Update status
-        transaction.status = TransactionStatus.COMPLETED
-        TransactionRepository.update(db, transaction)
-        
-        # Create stock movements
-        for line in transaction.lines:
-            # IN = positive, OUT = negative
-            quantity = line.quantity if transaction.operation_type == OperationType.IN else -line.quantity
-            
-            stock_movement = StockMovement(
-                quantity=quantity,
-                movement_type=MovementType(transaction.operation_type.value),
-                created_at=datetime.utcnow(),
-                item_id=line.item_id,
-                branch_id=transaction.branch_id,
-                transaction_id=transaction.id
-            )
-            db.add(stock_movement)
-        
-        # Create COMPLETED event
-        event = TransactionEvent(
-            action_type=ActionType.COMPLETED,
-            timestamp=datetime.utcnow(),
-            transaction_id=transaction.id,
+        TransactionService._complete_transaction_in_place(
+            db=db,
+            transaction=transaction,
             performed_by=current_user.id
         )
-        TransactionRepository.create_event(db, event)
         
         TransactionRepository.commit(db)
         

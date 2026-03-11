@@ -26,6 +26,7 @@ class TransactionCreate(BaseModel):
     description: Optional[str] = Field(None, max_length=1000)
     branch_id: int = Field(gt=0)
     destination_branch_id: Optional[int] = Field(None, gt=0)
+    auto_complete: bool = False
     lines: List[TransactionLineCreate] = Field(min_length=1)
 
     @field_validator("destination_branch_id")
