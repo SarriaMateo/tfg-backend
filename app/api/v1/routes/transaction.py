@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, status, Form, Query, Request
+from fastapi import APIRouter, Depends, UploadFile, File, status, Query, Request
 from starlette.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional, Literal, List
@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionUpdateRequest,
+    TransactionCancelRequest,
     TransactionResponse,
     TransactionDetailResponse,
     TransactionLineCreate,
@@ -176,7 +177,7 @@ def update_transaction(
 )
 def cancel_transaction(
     transaction_id: int,
-    cancel_reason: Optional[str] = Form(None),
+    cancel_data: TransactionCancelRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -193,7 +194,7 @@ def cancel_transaction(
     - Transaction cannot be modified after cancellation
     """
     transaction = TransactionService.cancel_transaction(
-        db, transaction_id, current_user, cancel_reason
+        db, transaction_id, current_user, cancel_data.cancel_reason
     )
     return transaction
 

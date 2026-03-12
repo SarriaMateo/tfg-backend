@@ -95,6 +95,11 @@ class TransactionUpdateRequest(BaseModel):
     auto_complete: bool = False
 
 
+class TransactionCancelRequest(BaseModel):
+    """Payload for POST /transactions/{id}/cancel"""
+    cancel_reason: Optional[str] = None
+
+
 class TransactionUpdate(BaseModel):
     """Update transaction status or description (limited operations)"""
     status: Optional[TransactionStatus] = None

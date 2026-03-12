@@ -631,7 +631,7 @@ async def test_cancel_transaction_success(
     
     response = await client.post(
         f"/api/v1/transactions/{transaction.id}/cancel",
-        data={"cancel_reason": "Test cancellation"},
+        json={"cancel_reason": "Test cancellation"},
         headers={"Authorization": f"Bearer {token}"}
     )
     
