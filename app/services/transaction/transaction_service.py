@@ -406,6 +406,15 @@ class TransactionService:
                 event_metadata=changes
             )
             TransactionRepository.create_event(db, event)
+
+        if transaction_data.auto_complete:
+            db.flush()
+            db.refresh(transaction)
+            TransactionService._complete_transaction_in_place(
+                db=db,
+                transaction=transaction,
+                performed_by=current_user.id
+            )
         
         TransactionRepository.commit(db)
         

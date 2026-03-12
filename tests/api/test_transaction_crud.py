@@ -842,6 +842,93 @@ async def test_update_transaction_lines_metadata_contains_old_and_new(
     assert meta["new"] == [{"item_id": item2.id, "quantity": 20.0}]
 
 
+@pytest.mark.asyncio
+async def test_update_transaction_auto_complete_success_creates_completed_event(
+    client, db_session, company_with_transactions_data
+):
+    """Test updating a pending transaction with auto_complete=True"""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        description="Pending tx",
+        branch_id=branch.id
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(quantity=10, item_id=item.id, transaction_id=transaction.id))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=user.id
+    ))
+    db_session.commit()
+
+    token = build_token(user)
+    response = await client.put(
+        f"/api/v1/transactions/{transaction.id}",
+        json={"description": "Updated and completed", "auto_complete": True},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["status"] == "COMPLETED"
+    assert result["description"] == "Updated and completed"
+
+    events = db_session.query(TransactionEvent).filter(
+        TransactionEvent.transaction_id == transaction.id
+    ).order_by(TransactionEvent.id.asc()).all()
+
+    assert [event.action_type for event in events] == [
+        ActionType.CREATED,
+        ActionType.EDITED,
+        ActionType.COMPLETED,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_update_transaction_auto_complete_out_insufficient_stock_fails(
+    client, db_session, company_with_transactions_data
+):
+    """Test update with auto_complete for OUT fails if resulting stock would be negative"""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    transaction = Transaction(
+        operation_type=OperationType.OUT,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(quantity=1, item_id=item.id, transaction_id=transaction.id))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=user.id
+    ))
+    db_session.commit()
+
+    token = build_token(user)
+    response = await client.put(
+        f"/api/v1/transactions/{transaction.id}",
+        json={"auto_complete": True},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert "INSUFFICIENT_STOCK" in response.json()["detail"]
+
+
 # =============================================================================
 # LIST TRANSACTIONS TESTS
 # =============================================================================

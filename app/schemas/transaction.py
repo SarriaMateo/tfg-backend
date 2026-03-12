@@ -92,6 +92,7 @@ class TransactionUpdateRequest(BaseModel):
     """Payload for PUT /transactions/{id}"""
     description: Optional[str] = Field(None, max_length=1000)
     lines: Optional[List[TransactionLineCreate]] = None
+    auto_complete: bool = False
 
 
 class TransactionUpdate(BaseModel):
