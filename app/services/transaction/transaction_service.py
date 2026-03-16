@@ -22,21 +22,53 @@ from app.services.user.user_service import UserService
 
 
 class TransactionService:
-    """Business logic service for transactions (IN and OUT only for now)"""
+    """Business logic service for transactions."""
 
     @staticmethod
     def _complete_transaction_in_place(
         db: Session,
         transaction: Transaction,
-        performed_by: int
+        performed_by: int,
+        current_user: User
     ) -> None:
         """
-        Complete a PENDING transaction in the current DB transaction.
-        - Validates stock for OUT operations
-        - Sets status to COMPLETED
-        - Creates stock movements
-        - Creates COMPLETED event
+        Advance transaction completion in place.
+        - IN/OUT: PENDING -> COMPLETED
+        - TRANSFER: PENDING -> TRANSIT -> COMPLETED
         """
+        if transaction.operation_type == OperationType.TRANSFER:
+            if transaction.status == TransactionStatus.PENDING:
+                TransactionService._send_transfer_in_place(
+                    db=db,
+                    transaction=transaction,
+                    performed_by=performed_by
+                )
+                return
+
+            if transaction.status == TransactionStatus.TRANSIT:
+                TransactionService._validate_transfer_terminal_completion_permission(
+                    db=db,
+                    transaction=transaction,
+                    current_user=current_user
+                )
+                TransactionService._receive_transfer_in_place(
+                    db=db,
+                    transaction=transaction,
+                    performed_by=performed_by
+                )
+                return
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="TRANSFER_NOT_COMPLETABLE"
+            )
+
+        if transaction.status != TransactionStatus.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="TRANSACTION_NOT_COMPLETABLE"
+            )
+
         if transaction.operation_type == OperationType.OUT:
             for line in transaction.lines:
                 current_stock = StockMovementRepository.get_stock_by_item_and_branch(
@@ -62,6 +94,93 @@ class TransactionService:
                 created_at=datetime.utcnow(),
                 item_id=line.item_id,
                 branch_id=transaction.branch_id,
+                transaction_id=transaction.id
+            )
+            db.add(stock_movement)
+
+        event = TransactionEvent(
+            action_type=ActionType.COMPLETED,
+            timestamp=datetime.utcnow(),
+            transaction_id=transaction.id,
+            performed_by=performed_by
+        )
+        TransactionRepository.create_event(db, event)
+
+    @staticmethod
+    def _send_transfer_in_place(
+        db: Session,
+        transaction: Transaction,
+        performed_by: int
+    ) -> None:
+        """
+        Move TRANSFER from PENDING to TRANSIT and register SENT.
+        """
+        if transaction.destination_branch_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="TRANSFER_DESTINATION_REQUIRED"
+            )
+
+        for line in transaction.lines:
+            current_stock = StockMovementRepository.get_stock_by_item_and_branch(
+                db, line.item_id, transaction.branch_id
+            )
+
+            if current_stock - line.quantity < 0:
+                item = ItemRepository.get_by_id(db, line.item_id)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"INSUFFICIENT_STOCK_FOR_ITEM_{item.sku}"
+                )
+
+        transaction.status = TransactionStatus.TRANSIT
+        TransactionRepository.update(db, transaction)
+
+        for line in transaction.lines:
+            stock_movement = StockMovement(
+                quantity=-line.quantity,
+                movement_type=MovementType.TRANSFER,
+                created_at=datetime.utcnow(),
+                item_id=line.item_id,
+                branch_id=transaction.branch_id,
+                transaction_id=transaction.id
+            )
+            db.add(stock_movement)
+
+        event = TransactionEvent(
+            action_type=ActionType.SENT,
+            timestamp=datetime.utcnow(),
+            transaction_id=transaction.id,
+            performed_by=performed_by
+        )
+        TransactionRepository.create_event(db, event)
+
+    @staticmethod
+    def _receive_transfer_in_place(
+        db: Session,
+        transaction: Transaction,
+        performed_by: int
+    ) -> None:
+        """
+        Move TRANSFER from TRANSIT to COMPLETED.
+        """
+        destination_branch_id = transaction.destination_branch_id
+        if destination_branch_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="TRANSFER_DESTINATION_REQUIRED"
+            )
+
+        transaction.status = TransactionStatus.COMPLETED
+        TransactionRepository.update(db, transaction)
+
+        for line in transaction.lines:
+            stock_movement = StockMovement(
+                quantity=line.quantity,
+                movement_type=MovementType.TRANSFER,
+                created_at=datetime.utcnow(),
+                item_id=line.item_id,
+                branch_id=destination_branch_id,
                 transaction_id=transaction.id
             )
             db.add(stock_movement)
@@ -207,6 +326,47 @@ class TransactionService:
                     )
 
     @staticmethod
+    def _validate_transfer_creation_permission(current_user: User) -> None:
+        """Only users without branch association can create transfers."""
+        if current_user.branch_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="TRANSFER_CREATION_REQUIRES_CENTRAL_USER"
+            )
+
+    @staticmethod
+    def _validate_transfer_terminal_completion_permission(
+        db: Session,
+        transaction: Transaction,
+        current_user: User
+    ) -> None:
+        """
+        Final transfer completion requires destination branch access
+        or a user without branch association.
+        """
+        destination_branch_id = transaction.destination_branch_id
+        if destination_branch_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="TRANSFER_DESTINATION_REQUIRED"
+            )
+
+        TransactionService._validate_user_can_access_branch(
+            current_user,
+            destination_branch_id,
+            db
+        )
+
+    @staticmethod
+    def _validate_transaction_cancelable(transaction: Transaction) -> None:
+        """Validate that transaction can be canceled (PENDING or TRANSIT)."""
+        if transaction.status not in (TransactionStatus.PENDING, TransactionStatus.TRANSIT):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="TRANSACTION_NOT_CANCELABLE"
+            )
+
+    @staticmethod
     def _validate_transaction_editable(transaction: Transaction) -> None:
         """
         Validate that transaction can be edited (status must be PENDING).
@@ -259,11 +419,12 @@ class TransactionService:
         current_user: User
     ) -> Transaction:
         """
-        Create a new transaction (IN or OUT only).
+        Create a new transaction.
         
         Validations:
         - User must be active
-        - Operation type must be IN or OUT (TRANSFER and ADJUSTMENT not implemented yet)
+        - Operation type supports IN, OUT and TRANSFER
+        - TRANSFER can only be created by users without associated branch
         - Branch must be active and belong to user's company
         - If user has branch assigned, can only create in that branch
         - All items must be active and belong to same company
@@ -276,17 +437,40 @@ class TransactionService:
         """
         UserService.validate_user_active(current_user)
         
-        # Validate operation type (only IN and OUT for now)
-        if transaction_data.operation_type not in (OperationType.IN, OperationType.OUT):
+        # ADJUSTMENT is not part of this stage yet
+        if transaction_data.operation_type == OperationType.ADJUSTMENT:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="OPERATION_TYPE_NOT_SUPPORTED"
             )
+
+        if transaction_data.operation_type == OperationType.TRANSFER:
+            TransactionService._validate_transfer_creation_permission(current_user)
         
         # Validate branch access
         TransactionService._validate_branch_for_create(
             current_user, transaction_data.branch_id, db
         )
+
+        if transaction_data.operation_type == OperationType.TRANSFER:
+            destination_branch_id = transaction_data.destination_branch_id
+            if destination_branch_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="TRANSFER_DESTINATION_REQUIRED"
+                )
+
+            if transaction_data.branch_id == destination_branch_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="TRANSFER_BRANCHES_MUST_BE_DIFFERENT"
+                )
+
+            TransactionService._validate_user_can_access_branch(
+                current_user,
+                destination_branch_id,
+                db
+            )
         
         # Validate items
         item_ids = [line.item_id for line in transaction_data.lines]
@@ -330,7 +514,8 @@ class TransactionService:
             TransactionService._complete_transaction_in_place(
                 db=db,
                 transaction=transaction,
-                performed_by=current_user.id
+                performed_by=current_user.id,
+                current_user=current_user
             )
         
         TransactionRepository.commit(db)
@@ -448,7 +633,8 @@ class TransactionService:
             TransactionService._complete_transaction_in_place(
                 db=db,
                 transaction=transaction,
-                performed_by=current_user.id
+                performed_by=current_user.id,
+                current_user=current_user
             )
         
         TransactionRepository.commit(db)
@@ -464,12 +650,12 @@ class TransactionService:
         cancel_reason: Optional[str] = None
     ) -> Transaction:
         """
-        Cancel a transaction (only if status is PENDING).
+        Cancel a transaction.
         
         Validations:
         - User must be active
         - Transaction must exist and belong to user's accessible branches
-        - Transaction must be in PENDING status
+        - Transaction must be in PENDING or TRANSIT status
         
         Actions:
         - Update status to CANCELLED
@@ -490,8 +676,8 @@ class TransactionService:
             current_user, transaction.branch_id, db
         )
         
-        # Validate editable
-        TransactionService._validate_transaction_editable(transaction)
+        # Validate cancelable
+        TransactionService._validate_transaction_cancelable(transaction)
         
         # Update status
         transaction.status = TransactionStatus.CANCELLED
@@ -523,12 +709,13 @@ class TransactionService:
         current_user: User
     ) -> Transaction:
         """
-        Complete a transaction (only if status is PENDING).
+        Complete a transaction.
         
         Validations:
         - User must be active
         - Transaction must exist and belong to user's accessible branches
-        - Transaction must be in PENDING status
+        - IN/OUT transactions must be in PENDING status
+        - TRANSFER transactions can be completed from PENDING or TRANSIT
         - For OUT operations, verify stock won't go negative
         
         Actions:
@@ -546,18 +733,31 @@ class TransactionService:
                 detail="TRANSACTION_NOT_FOUND"
             )
         
-        # Validate access
-        TransactionService._validate_user_can_access_branch(
-            current_user, transaction.branch_id, db
-        )
-        
-        # Validate editable
-        TransactionService._validate_transaction_editable(transaction)
+        if transaction.operation_type == OperationType.TRANSFER and transaction.status == TransactionStatus.TRANSIT:
+            TransactionService._validate_transfer_terminal_completion_permission(
+                db=db,
+                transaction=transaction,
+                current_user=current_user
+            )
+        else:
+            TransactionService._validate_user_can_access_branch(
+                current_user, transaction.branch_id, db
+            )
+
+        if transaction.operation_type == OperationType.TRANSFER:
+            if transaction.status not in (TransactionStatus.PENDING, TransactionStatus.TRANSIT):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="TRANSFER_NOT_COMPLETABLE"
+                )
+        else:
+            TransactionService._validate_transaction_editable(transaction)
         
         TransactionService._complete_transaction_in_place(
             db=db,
             transaction=transaction,
-            performed_by=current_user.id
+            performed_by=current_user.id,
+            current_user=current_user
         )
         
         TransactionRepository.commit(db)

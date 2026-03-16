@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 class ActionType(PyEnum):
     CREATED = "CREATED"
     EDITED = "EDITED"
+    SENT = "SENT"
     CANCELLED = "CANCELLED"
     COMPLETED = "COMPLETED"
 

@@ -379,10 +379,10 @@ async def test_create_transaction_auto_complete_out_insufficient_stock_fails(
 
 
 @pytest.mark.asyncio
-async def test_create_transaction_transfer_not_supported(
+async def test_create_transaction_transfer_success_for_central_user(
     client, company_with_transactions_data
 ):
-    """Test that TRANSFER operation is not yet supported"""
+    """Test central user can create a TRANSFER transaction in pending state."""
     data = company_with_transactions_data
     user = data["users"]["admin"]
     branch = data["branches"][0]
@@ -404,9 +404,143 @@ async def test_create_transaction_transfer_not_supported(
         json=transaction_data,
         headers={"Authorization": f"Bearer {token}"}
     )
-    
+
+    assert response.status_code == 201
+    result = response.json()
+    assert result["operation_type"] == "TRANSFER"
+    assert result["status"] == "PENDING"
+    assert result["destination_branch_id"] == data["branches"][1].id
+
+
+@pytest.mark.asyncio
+async def test_create_transaction_transfer_forbidden_for_branch_user(
+    client, company_with_transactions_data
+):
+    """Test users with associated branch cannot create transfers."""
+    data = company_with_transactions_data
+    user = data["users"]["employee_branch_a"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    token = build_token(user)
+
+    transaction_data = {
+        "operation_type": "TRANSFER",
+        "branch_id": branch.id,
+        "destination_branch_id": data["branches"][1].id,
+        "lines": [
+            {"quantity": 2, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=transaction_data,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "TRANSFER_CREATION_REQUIRES_CENTRAL_USER"
+
+
+@pytest.mark.asyncio
+async def test_create_transaction_transfer_inactive_user_fails(
+    client, db_session, company_with_transactions_data
+):
+    """Test inactive user cannot create transfer transactions."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    user.is_active = False
+    db_session.commit()
+
+    token = build_token(user)
+
+    transaction_data = {
+        "operation_type": "TRANSFER",
+        "branch_id": branch.id,
+        "destination_branch_id": data["branches"][1].id,
+        "lines": [
+            {"quantity": 2, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=transaction_data,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "USER_INACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_create_transaction_transfer_inactive_destination_branch_fails(
+    client, db_session, company_with_transactions_data
+):
+    """Test transfer creation fails when destination branch is inactive."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    destination_branch.is_active = False
+    db_session.commit()
+
+    token = build_token(user)
+
+    transaction_data = {
+        "operation_type": "TRANSFER",
+        "branch_id": branch.id,
+        "destination_branch_id": destination_branch.id,
+        "lines": [
+            {"quantity": 2, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=transaction_data,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "BRANCH_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_create_transaction_transfer_same_origin_and_destination_fails(
+    client, company_with_transactions_data
+):
+    """Test transfer creation fails when origin and destination branches are the same."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    token = build_token(user)
+
+    transaction_data = {
+        "operation_type": "TRANSFER",
+        "branch_id": branch.id,
+        "destination_branch_id": branch.id,
+        "lines": [
+            {"quantity": 2, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=transaction_data,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
     assert response.status_code == 400
-    assert "OPERATION_TYPE_NOT_SUPPORTED" in response.json()["detail"]
+    assert response.json()["detail"] == "TRANSFER_BRANCHES_MUST_BE_DIFFERENT"
 
 
 # =============================================================================
@@ -589,6 +723,179 @@ async def test_complete_transaction_out_insufficient_stock_fails(
     assert "INSUFFICIENT_STOCK" in response.json()["detail"]
 
 
+@pytest.mark.asyncio
+async def test_create_transfer_auto_complete_moves_to_transit_and_creates_sent_event(
+    client, db_session, company_with_transactions_data
+):
+    """Test TRANSFER auto_complete performs first phase (send) and moves status to TRANSIT."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    # Seed source stock
+    seed_tx = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        branch_id=source_branch.id
+    )
+    db_session.add(seed_tx)
+    db_session.flush()
+    db_session.add(StockMovement(
+        quantity=20,
+        movement_type=MovementType.IN,
+        item_id=item.id,
+        branch_id=source_branch.id,
+        transaction_id=seed_tx.id
+    ))
+    db_session.commit()
+
+    token = build_token(user)
+    payload = {
+        "operation_type": "TRANSFER",
+        "description": "Send stock to destination",
+        "branch_id": source_branch.id,
+        "destination_branch_id": destination_branch.id,
+        "auto_complete": True,
+        "lines": [{"quantity": 5, "item_id": item.id}]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "TRANSIT"
+
+    events = db_session.query(TransactionEvent).filter(
+        TransactionEvent.transaction_id == result["id"]
+    ).order_by(TransactionEvent.id.asc()).all()
+    assert [event.action_type for event in events] == [ActionType.CREATED, ActionType.SENT]
+
+    stock_movements = db_session.query(StockMovement).filter(
+        StockMovement.transaction_id == result["id"]
+    ).all()
+    assert len(stock_movements) == 1
+    assert stock_movements[0].branch_id == source_branch.id
+    assert stock_movements[0].quantity == -5
+    assert stock_movements[0].movement_type == MovementType.TRANSFER
+
+
+@pytest.mark.asyncio
+async def test_complete_transfer_two_steps_creates_source_and_destination_movements(
+    client, db_session, company_with_transactions_data
+):
+    """Test transfer completion flow PENDING -> TRANSIT -> COMPLETED with stock split by branch."""
+    data = company_with_transactions_data
+    central_user = data["users"]["admin"]
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    # Seed source stock
+    seed_tx = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        branch_id=source_branch.id
+    )
+    db_session.add(seed_tx)
+    db_session.flush()
+    db_session.add(StockMovement(
+        quantity=30,
+        movement_type=MovementType.IN,
+        item_id=item.id,
+        branch_id=source_branch.id,
+        transaction_id=seed_tx.id
+    ))
+
+    transfer = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.PENDING,
+        branch_id=source_branch.id,
+        destination_branch_id=destination_branch.id
+    )
+    db_session.add(transfer)
+    db_session.flush()
+    db_session.add(TransactionLine(quantity=7, item_id=item.id, transaction_id=transfer.id))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transfer.id,
+        performed_by=central_user.id
+    ))
+    db_session.commit()
+
+    token = build_token(central_user)
+
+    first_response = await client.post(
+        f"/api/v1/transactions/{transfer.id}/complete",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert first_response.status_code == 200
+    assert first_response.json()["status"] == "TRANSIT"
+
+    second_response = await client.post(
+        f"/api/v1/transactions/{transfer.id}/complete",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert second_response.status_code == 200
+    assert second_response.json()["status"] == "COMPLETED"
+
+    movements = db_session.query(StockMovement).filter(
+        StockMovement.transaction_id == transfer.id
+    ).order_by(StockMovement.id.asc()).all()
+
+    assert len(movements) == 2
+    assert movements[0].branch_id == source_branch.id
+    assert movements[0].quantity == -7
+    assert movements[1].branch_id == destination_branch.id
+    assert movements[1].quantity == 7
+
+    events = db_session.query(TransactionEvent).filter(
+        TransactionEvent.transaction_id == transfer.id
+    ).order_by(TransactionEvent.id.asc()).all()
+    assert [event.action_type for event in events] == [
+        ActionType.CREATED,
+        ActionType.SENT,
+        ActionType.COMPLETED,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_complete_transfer_in_transit_forbidden_if_user_not_destination_or_central(
+    client, db_session, company_with_transactions_data
+):
+    """Test transfer in TRANSIT can only be completed by destination branch user or central user."""
+    data = company_with_transactions_data
+    source_user = data["users"]["employee_branch_a"]
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    transfer = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.TRANSIT,
+        branch_id=source_branch.id,
+        destination_branch_id=destination_branch.id
+    )
+    db_session.add(transfer)
+    db_session.flush()
+    db_session.add(TransactionLine(quantity=3, item_id=item.id, transaction_id=transfer.id))
+    db_session.commit()
+
+    token = build_token(source_user)
+    response = await client.post(
+        f"/api/v1/transactions/{transfer.id}/complete",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "BRANCH_ACCESS_DENIED"
+
+
 # =============================================================================
 # CANCEL TRANSACTION TESTS
 # =============================================================================
@@ -650,6 +957,44 @@ async def test_cancel_transaction_success(
 
 
 @pytest.mark.asyncio
+async def test_cancel_transaction_in_transit_success(
+    client, db_session, company_with_transactions_data
+):
+    """Test cancelling a transfer in TRANSIT status is allowed."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    transaction = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.TRANSIT,
+        branch_id=source_branch.id,
+        destination_branch_id=destination_branch.id
+    )
+    db_session.add(transaction)
+    db_session.flush()
+    db_session.add(TransactionLine(quantity=4, item_id=item.id, transaction_id=transaction.id))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=user.id
+    ))
+    db_session.commit()
+
+    token = build_token(user)
+    response = await client.post(
+        f"/api/v1/transactions/{transaction.id}/cancel",
+        json={"cancel_reason": "Transit canceled"},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "CANCELLED"
+
+
+@pytest.mark.asyncio
 async def test_cannot_edit_cancelled_transaction(
     client, db_session, company_with_transactions_data
 ):
@@ -684,6 +1029,45 @@ async def test_cannot_edit_cancelled_transaction(
         headers={"Authorization": f"Bearer {token}"}
     )
     
+    assert response.status_code == 400
+    assert "TRANSACTION_NOT_EDITABLE" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_cannot_edit_transit_transaction(
+    client, db_session, company_with_transactions_data
+):
+    """Test that transfer in TRANSIT cannot be edited."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    transaction = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.TRANSIT,
+        branch_id=source_branch.id,
+        destination_branch_id=destination_branch.id
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(
+        quantity=10,
+        item_id=item.id,
+        transaction_id=transaction.id
+    ))
+    db_session.commit()
+
+    token = build_token(user)
+
+    response = await client.put(
+        f"/api/v1/transactions/{transaction.id}",
+        json={"description": "Try to edit transit"},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
     assert response.status_code == 400
     assert "TRANSACTION_NOT_EDITABLE" in response.json()["detail"]
 

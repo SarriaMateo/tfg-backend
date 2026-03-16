@@ -105,10 +105,10 @@ def create_transaction(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Create a new transaction (IN or OUT only for now).
+    Create a new transaction.
     
     Validations:
-    - Operation type must be IN or OUT (TRANSFER and ADJUSTMENT not supported yet)
+    - Operation type supports IN, OUT and TRANSFER (ADJUSTMENT pending next stage)
     - Branch must be active and belong to user's company
     - If user has branch assigned, can only create in that branch
     - All items must be active and belong to same company
@@ -182,11 +182,11 @@ def cancel_transaction(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Cancel a transaction (only if status is PENDING).
+    Cancel a transaction.
     
     Validations:
     - Transaction must exist and belong to user's accessible branches
-    - Transaction must be in PENDING status
+    - Transaction must be in PENDING or TRANSIT status
     
     Actions:
     - Updates status to CANCELLED
@@ -210,11 +210,13 @@ def complete_transaction(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Complete a transaction (only if status is PENDING).
+    Complete a transaction.
     
     Validations:
     - Transaction must exist and belong to user's accessible branches
-    - Transaction must be in PENDING status
+    - IN/OUT transactions must be in PENDING status
+    - TRANSFER transactions move PENDING -> TRANSIT on first completion
+    - TRANSFER transactions move TRANSIT -> COMPLETED on second completion
     - For OUT operations, verifies stock won't go negative
     
     Actions:

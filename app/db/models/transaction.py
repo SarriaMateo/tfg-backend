@@ -25,6 +25,7 @@ class OperationType(PyEnum):
 
 class TransactionStatus(PyEnum):
     PENDING = "PENDING"
+    TRANSIT = "TRANSIT"
     CANCELLED = "CANCELLED"
     COMPLETED = "COMPLETED"
 
