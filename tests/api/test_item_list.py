@@ -56,7 +56,7 @@ def company_with_data(db_session):
     item_4 = Item(
         name="Floor Tile",
         sku="SKU004",
-        unit=Unit.SQUARE_METER,
+        unit=Unit.SQ_METER,
         brand="BuildCo",
         is_active=True,
         company_id=company.id

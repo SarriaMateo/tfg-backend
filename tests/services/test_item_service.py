@@ -104,14 +104,14 @@ class TestItemServiceCreate:
         item_data = ItemCreate(
             name="Ceramic Tile",
             sku="SKU002",
-            unit=ItemUnit.SQUARE_METER
+            unit=ItemUnit.SQ_METER
         )
         mock_repo.get_by_sku_and_company.return_value = None
 
         result = ItemService.create_item(mock_db, item_data, manager_user)
 
         assert result is not None
-        assert result.unit == Unit.SQUARE_METER
+        assert result.unit == Unit.M2
         mock_repo.create.assert_called_once()
 
     @patch("app.services.item.item_service.ItemRepository")
