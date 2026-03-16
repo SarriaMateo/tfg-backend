@@ -6,6 +6,7 @@ from app.db.models.branch import Branch
 from app.db.models.item import Item, Unit
 from app.db.models.category import Category
 from app.db.models.stock_movement import StockMovement, MovementType
+from app.db.models.transaction import Transaction, OperationType, TransactionStatus
 
 
 @pytest.fixture
@@ -52,31 +53,52 @@ def company_with_data(db_session):
         is_active=True,
         company_id=company.id
     )
-    db_session.add_all([item_1, item_2, item_3])
+    item_4 = Item(
+        name="Floor Tile",
+        sku="SKU004",
+        unit=Unit.SQUARE_METER,
+        brand="BuildCo",
+        is_active=True,
+        company_id=company.id
+    )
+    db_session.add_all([item_1, item_2, item_3, item_4])
+    db_session.flush()
+
+    stock_transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        description="Seed stock for item list tests",
+        branch_id=branch_a.id,
+    )
+    db_session.add(stock_transaction)
     db_session.flush()
 
     item_1.categories.append(category_food)
     item_2.categories.append(category_cleaning)
     item_3.categories.append(category_food)
+    item_4.categories.append(category_cleaning)
 
     db_session.add_all([
         StockMovement(
             quantity=10,
             movement_type=MovementType.IN,
             item_id=item_1.id,
-            branch_id=branch_a.id
+            branch_id=branch_a.id,
+            transaction_id=stock_transaction.id
         ),
         StockMovement(
             quantity=-3,
             movement_type=MovementType.OUT,
             item_id=item_1.id,
-            branch_id=branch_a.id
+            branch_id=branch_a.id,
+            transaction_id=stock_transaction.id
         ),
         StockMovement(
             quantity=5,
             movement_type=MovementType.IN,
             item_id=item_3.id,
-            branch_id=branch_b.id
+            branch_id=branch_b.id,
+            transaction_id=stock_transaction.id
         ),
     ])
 
@@ -85,7 +107,7 @@ def company_with_data(db_session):
         "company": company,
         "branches": [branch_a, branch_b],
         "categories": [category_food, category_cleaning],
-        "items": [item_1, item_2, item_3],
+        "items": [item_1, item_2, item_3, item_4],
     }
 
 
@@ -180,8 +202,8 @@ async def test_list_items_returns_paginated_data_and_zero_stock(client, active_u
 
     assert payload["page"] == 1
     assert payload["page_size"] == 2
-    assert payload["total"] == 2
-    assert payload["total_pages"] == 1
+    assert payload["total"] == 3
+    assert payload["total_pages"] == 2
     assert len(payload["data"]) == 2
 
     found_zero_stock_item = False
@@ -211,6 +233,24 @@ async def test_list_items_filters_by_is_active_unit_and_category(client, active_
     assert len(payload["data"]) == 1
     assert payload["data"][0]["name"] == "Rice Bag"
     assert payload["data"][0]["unit"] == "kg"
+
+
+@pytest.mark.asyncio
+async def test_list_items_filters_by_square_meter_unit(client, active_user_same_company):
+    token = build_token(active_user_same_company)
+
+    response = await client.get(
+        "/api/v1/items?unit=m2",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["total"] == 1
+    assert len(payload["data"]) == 1
+    assert payload["data"][0]["name"] == "Floor Tile"
+    assert payload["data"][0]["unit"] == "m2"
 
 
 @pytest.mark.asyncio
@@ -258,8 +298,8 @@ async def test_list_items_order_by_stock_desc(client, active_user_same_company):
     assert response.status_code == 200
     payload = response.json()
 
-    assert payload["total"] == 2
-    assert len(payload["data"]) == 2
+    assert payload["total"] == 3
+    assert len(payload["data"]) == 3
 
     first = payload["data"][0]
     second = payload["data"][1]
@@ -282,6 +322,6 @@ async def test_list_items_admin_sees_active_and_inactive_by_default(client, acti
     assert response.status_code == 200
     payload = response.json()
 
-    assert payload["total"] == 3
+    assert payload["total"] == 4
     item_names = [item["name"] for item in payload["data"]]
     assert "Soap" in item_names

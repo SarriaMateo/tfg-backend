@@ -99,6 +99,22 @@ class TestItemServiceCreate:
         mock_repo.create.assert_called_once()
 
     @patch("app.services.item.item_service.ItemRepository")
+    def test_create_item_square_meter_success(self, mock_repo, mock_db, manager_user):
+        """Square meter is accepted as a valid unit"""
+        item_data = ItemCreate(
+            name="Ceramic Tile",
+            sku="SKU002",
+            unit=ItemUnit.SQUARE_METER
+        )
+        mock_repo.get_by_sku_and_company.return_value = None
+
+        result = ItemService.create_item(mock_db, item_data, manager_user)
+
+        assert result is not None
+        assert result.unit == Unit.SQUARE_METER
+        mock_repo.create.assert_called_once()
+
+    @patch("app.services.item.item_service.ItemRepository")
     def test_create_item_employee_forbidden(self, mock_repo, mock_db, employee_user):
         """Employee cannot create an item"""
         item_data = ItemCreate(

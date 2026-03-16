@@ -23,6 +23,7 @@ class Unit(PyEnum):
     LITER = "l"
     MILLILITER = "ml"
     METER = "m"
+    SQUARE_METER = "m2"
     BOX = "box"
     PACK = "pack"
 

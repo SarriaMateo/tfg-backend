@@ -13,6 +13,7 @@ class ItemUnit(str, Enum):
     LITER = "l"
     MILLILITER = "ml"
     METER = "m"
+    SQUARE_METER = "m2"
     BOX = "box"
     PACK = "pack"
 
