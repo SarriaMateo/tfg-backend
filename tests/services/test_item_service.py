@@ -111,7 +111,7 @@ class TestItemServiceCreate:
         result = ItemService.create_item(mock_db, item_data, manager_user)
 
         assert result is not None
-        assert result.unit == Unit.M2
+        assert result.unit == Unit.SQ_METER
         mock_repo.create.assert_called_once()
 
     @patch("app.services.item.item_service.ItemRepository")
