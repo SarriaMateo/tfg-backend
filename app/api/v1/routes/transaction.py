@@ -108,7 +108,8 @@ def create_transaction(
     Create a new transaction.
     
     Validations:
-    - Operation type supports IN, OUT and TRANSFER (ADJUSTMENT pending next stage)
+    - Operation type supports IN, OUT, TRANSFER and ADJUSTMENT
+    - ADJUSTMENT requires ADMIN/MANAGER role, non-empty description and auto_complete=true
     - Branch must be active and belong to user's company
     - If user has branch assigned, can only create in that branch
     - All items must be active and belong to same company

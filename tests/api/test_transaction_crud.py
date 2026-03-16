@@ -83,8 +83,18 @@ def company_with_transactions_data(db_session):
         company_id=company.id,
         branch_id=None
     )
+
+    manager_branch_a = User(
+        name="Manager A",
+        username="manager_a",
+        hashed_password=hash_password("password123"),
+        role=Role.MANAGER,
+        is_active=True,
+        company_id=company.id,
+        branch_id=branch_a.id
+    )
     
-    db_session.add_all([admin_user, employee_branch_a, employee_no_branch])
+    db_session.add_all([admin_user, employee_branch_a, employee_no_branch, manager_branch_a])
     db_session.commit()
 
     return {
@@ -94,7 +104,8 @@ def company_with_transactions_data(db_session):
         "users": {
             "admin": admin_user,
             "employee_branch_a": employee_branch_a,
-            "employee_no_branch": employee_no_branch
+            "employee_no_branch": employee_no_branch,
+            "manager_branch_a": manager_branch_a
         }
     }
 
@@ -298,6 +309,36 @@ async def test_create_transaction_integer_quantity_validation(
     
     assert response.status_code == 400
     assert "QUANTITY_MUST_BE_INTEGER" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_in_transaction_negative_quantity_fails(
+    client, company_with_transactions_data
+):
+    """Test non-adjustment transactions reject negative quantities."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][1]
+
+    token = build_token(user)
+
+    transaction_data = {
+        "operation_type": "IN",
+        "branch_id": branch.id,
+        "lines": [
+            {"quantity": -1, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=transaction_data,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "QUANTITY_MUST_BE_POSITIVE"
 
 
 @pytest.mark.asyncio
@@ -541,6 +582,199 @@ async def test_create_transaction_transfer_same_origin_and_destination_fails(
 
     assert response.status_code == 400
     assert response.json()["detail"] == "TRANSFER_BRANCHES_MUST_BE_DIFFERENT"
+
+
+@pytest.mark.asyncio
+async def test_create_adjustment_requires_admin_or_manager(
+    client, company_with_transactions_data
+):
+    """Test EMPLOYEE cannot create adjustment transactions."""
+    data = company_with_transactions_data
+    user = data["users"]["employee_branch_a"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    token = build_token(user)
+
+    payload = {
+        "operation_type": "ADJUSTMENT",
+        "description": "Stock recount",
+        "branch_id": branch.id,
+        "auto_complete": True,
+        "lines": [{"quantity": 1, "item_id": item.id}]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "INSUFFICIENT_ROLE"
+
+
+@pytest.mark.asyncio
+async def test_create_adjustment_requires_auto_complete_true(
+    client, company_with_transactions_data
+):
+    """Test ADJUSTMENT requires auto_complete=true."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    token = build_token(user)
+
+    payload = {
+        "operation_type": "ADJUSTMENT",
+        "description": "Stock recount",
+        "branch_id": branch.id,
+        "auto_complete": False,
+        "lines": [{"quantity": 1, "item_id": item.id}]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "ADJUSTMENT_REQUIRES_AUTO_COMPLETE"
+
+
+@pytest.mark.asyncio
+async def test_create_adjustment_requires_description(
+    client, company_with_transactions_data
+):
+    """Test ADJUSTMENT requires non-empty description."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    token = build_token(user)
+
+    payload = {
+        "operation_type": "ADJUSTMENT",
+        "description": "   ",
+        "branch_id": branch.id,
+        "auto_complete": True,
+        "lines": [{"quantity": 1, "item_id": item.id}]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "ADJUSTMENT_DESCRIPTION_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_create_adjustment_manager_cannot_use_other_branch(
+    client, company_with_transactions_data
+):
+    """Test manager assigned to a branch cannot create adjustment in another branch."""
+    data = company_with_transactions_data
+    user = data["users"]["manager_branch_a"]
+    other_branch = data["branches"][1]
+    item = data["items"][0]
+
+    token = build_token(user)
+
+    payload = {
+        "operation_type": "ADJUSTMENT",
+        "description": "Branch recount",
+        "branch_id": other_branch.id,
+        "auto_complete": True,
+        "lines": [{"quantity": -1, "item_id": item.id}]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "BRANCH_ACCESS_DENIED"
+
+
+@pytest.mark.asyncio
+async def test_create_adjustment_auto_completes_and_preserves_quantity_sign(
+    client, db_session, company_with_transactions_data
+):
+    """Test ADJUSTMENT auto-completes and creates stock movements with the same sign as payload."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][1]  # KILOGRAM supports decimal quantities
+
+    token = build_token(user)
+
+    payload = {
+        "operation_type": "ADJUSTMENT",
+        "description": "Inventory correction",
+        "branch_id": branch.id,
+        "auto_complete": True,
+        "lines": [
+            {"quantity": -2.5, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "COMPLETED"
+    assert result["operation_type"] == "ADJUSTMENT"
+
+    movements = db_session.query(StockMovement).filter(
+        StockMovement.transaction_id == result["id"]
+    ).all()
+    assert len(movements) == 1
+    assert float(movements[0].quantity) == -2.5
+    assert movements[0].movement_type == MovementType.ADJUSTMENT
+
+
+@pytest.mark.asyncio
+async def test_create_adjustment_rejects_zero_quantity(
+    client, company_with_transactions_data
+):
+    """Test ADJUSTMENT does not allow zero quantity lines."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][1]
+
+    token = build_token(user)
+
+    payload = {
+        "operation_type": "ADJUSTMENT",
+        "description": "Inventory correction",
+        "branch_id": branch.id,
+        "auto_complete": True,
+        "lines": [
+            {"quantity": 0, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "ADJUSTMENT_QUANTITY_CANNOT_BE_ZERO"
 
 
 # =============================================================================

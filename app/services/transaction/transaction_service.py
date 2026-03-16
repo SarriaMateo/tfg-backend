@@ -86,7 +86,12 @@ class TransactionService:
         TransactionRepository.update(db, transaction)
 
         for line in transaction.lines:
-            quantity = line.quantity if transaction.operation_type == OperationType.IN else -line.quantity
+            if transaction.operation_type == OperationType.ADJUSTMENT:
+                quantity = line.quantity
+            elif transaction.operation_type == OperationType.IN:
+                quantity = line.quantity
+            else:
+                quantity = -line.quantity
 
             stock_movement = StockMovement(
                 quantity=quantity,
@@ -335,6 +340,58 @@ class TransactionService:
             )
 
     @staticmethod
+    def _validate_adjustment_creation_permission(current_user: User) -> None:
+        """Only ADMIN and MANAGER users can create adjustments."""
+        if current_user.role not in (Role.ADMIN, Role.MANAGER):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="INSUFFICIENT_ROLE"
+            )
+
+    @staticmethod
+    def _validate_line_quantities_for_operation(
+        operation_type: OperationType,
+        lines_data: List
+    ) -> None:
+        """
+        Validate quantity sign constraints by operation type.
+        - ADJUSTMENT: positive or negative values allowed (zero not allowed)
+        - IN/OUT/TRANSFER: only positive values allowed
+        """
+        for line_data in lines_data:
+            if operation_type == OperationType.ADJUSTMENT:
+                if line_data.quantity == 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="ADJUSTMENT_QUANTITY_CANNOT_BE_ZERO"
+                    )
+            else:
+                if line_data.quantity <= 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="QUANTITY_MUST_BE_POSITIVE"
+                    )
+
+    @staticmethod
+    def _validate_adjustment_payload(transaction_data: TransactionCreate) -> None:
+        """
+        Validate ADJUSTMENT-specific payload requirements.
+        - Description is mandatory
+        - auto_complete must be true
+        """
+        if transaction_data.auto_complete is not True:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ADJUSTMENT_REQUIRES_AUTO_COMPLETE"
+            )
+
+        if transaction_data.description is None or not transaction_data.description.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ADJUSTMENT_DESCRIPTION_REQUIRED"
+            )
+
+    @staticmethod
     def _validate_transfer_terminal_completion_permission(
         db: Session,
         transaction: Transaction,
@@ -423,8 +480,9 @@ class TransactionService:
         
         Validations:
         - User must be active
-        - Operation type supports IN, OUT and TRANSFER
+        - Operation type supports IN, OUT, TRANSFER and ADJUSTMENT
         - TRANSFER can only be created by users without associated branch
+        - ADJUSTMENT can only be created by ADMIN and MANAGER users
         - Branch must be active and belong to user's company
         - If user has branch assigned, can only create in that branch
         - All items must be active and belong to same company
@@ -436,16 +494,12 @@ class TransactionService:
         - Create CREATED event
         """
         UserService.validate_user_active(current_user)
-        
-        # ADJUSTMENT is not part of this stage yet
-        if transaction_data.operation_type == OperationType.ADJUSTMENT:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="OPERATION_TYPE_NOT_SUPPORTED"
-            )
 
         if transaction_data.operation_type == OperationType.TRANSFER:
             TransactionService._validate_transfer_creation_permission(current_user)
+        elif transaction_data.operation_type == OperationType.ADJUSTMENT:
+            TransactionService._validate_adjustment_creation_permission(current_user)
+            TransactionService._validate_adjustment_payload(transaction_data)
         
         # Validate branch access
         TransactionService._validate_branch_for_create(
@@ -480,6 +534,10 @@ class TransactionService:
         
         # Validate quantities for specific units
         TransactionService._validate_quantities_for_units(transaction_data.lines, items)
+        TransactionService._validate_line_quantities_for_operation(
+            transaction_data.operation_type,
+            transaction_data.lines
+        )
         
         # Create transaction
         transaction = Transaction(
@@ -585,6 +643,10 @@ class TransactionService:
             
             # Validate quantities
             TransactionService._validate_quantities_for_units(transaction_data.lines, items)
+            TransactionService._validate_line_quantities_for_operation(
+                transaction.operation_type,
+                transaction_data.lines
+            )
             
             # Snapshot old lines before deleting
             old_snapshot = [
