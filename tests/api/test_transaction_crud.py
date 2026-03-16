@@ -1169,3 +1169,176 @@ async def test_list_transactions_filter_by_date_range(
     assert result["total"] == 1
     assert result["data"][0]["id"] == tx_in_range.id
     assert "has_document" not in result["data"][0]
+
+
+# =============================================================================
+# DOCUMENT PERMISSIONS TESTS
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_employee_can_upload_document_on_pending_transaction_not_created_by_them(
+    client, db_session, company_with_transactions_data
+):
+    data = company_with_transactions_data
+    admin_user = data["users"]["admin"]
+    employee_user = data["users"]["employee_branch_a"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(
+        quantity=3,
+        item_id=item.id,
+        transaction_id=transaction.id
+    ))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=admin_user.id
+    ))
+    db_session.commit()
+
+    token = build_token(employee_user)
+
+    response = await client.post(
+        f"/api/v1/transactions/{transaction.id}/document",
+        files={"document": ("test.pdf", b"%PDF-1.4\n", "application/pdf")},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["document_url"] is not None
+
+
+@pytest.mark.asyncio
+async def test_employee_can_upload_document_on_completed_transaction_created_by_them(
+    client, db_session, company_with_transactions_data
+):
+    data = company_with_transactions_data
+    employee_user = data["users"]["employee_branch_a"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        branch_id=branch.id
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(
+        quantity=3,
+        item_id=item.id,
+        transaction_id=transaction.id
+    ))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=employee_user.id
+    ))
+    db_session.commit()
+
+    token = build_token(employee_user)
+
+    response = await client.post(
+        f"/api/v1/transactions/{transaction.id}/document",
+        files={"document": ("test.pdf", b"%PDF-1.4\n", "application/pdf")},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["document_url"] is not None
+
+
+@pytest.mark.asyncio
+async def test_employee_cannot_delete_document_on_completed_transaction_not_created_by_them(
+    client, db_session, company_with_transactions_data
+):
+    data = company_with_transactions_data
+    admin_user = data["users"]["admin"]
+    employee_user = data["users"]["employee_branch_a"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        branch_id=branch.id,
+        document_url="transactions/1/existing.pdf"
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(
+        quantity=3,
+        item_id=item.id,
+        transaction_id=transaction.id
+    ))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=admin_user.id
+    ))
+    db_session.commit()
+
+    token = build_token(employee_user)
+
+    response = await client.delete(
+        f"/api/v1/transactions/{transaction.id}/document",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "DOCUMENT_OPERATION_FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_employee_can_delete_document_on_cancelled_transaction_created_by_them(
+    client, db_session, company_with_transactions_data
+):
+    data = company_with_transactions_data
+    employee_user = data["users"]["employee_branch_a"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.CANCELLED,
+        branch_id=branch.id,
+        document_url="transactions/1/existing.pdf"
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(
+        quantity=3,
+        item_id=item.id,
+        transaction_id=transaction.id
+    ))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=employee_user.id
+    ))
+    db_session.commit()
+
+    token = build_token(employee_user)
+
+    response = await client.delete(
+        f"/api/v1/transactions/{transaction.id}/document",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["document_url"] is None

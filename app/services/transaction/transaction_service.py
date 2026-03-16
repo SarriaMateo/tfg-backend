@@ -218,6 +218,41 @@ class TransactionService:
             )
 
     @staticmethod
+    def _validate_document_permission(transaction: Transaction, current_user: User) -> None:
+        """
+        Validate document upload/delete permissions.
+
+        Rules:
+        - ADMIN/MANAGER keep current permissions.
+        - EMPLOYEE can always manage documents for PENDING transactions.
+        - EMPLOYEE can manage documents for COMPLETED/CANCELLED only if they created
+          the transaction (CREATED event performed_by matches user id).
+        """
+        if current_user.role != Role.EMPLOYEE:
+            return
+
+        if transaction.status == TransactionStatus.PENDING:
+            return
+
+        if transaction.status in (TransactionStatus.COMPLETED, TransactionStatus.CANCELLED):
+            created_event = next(
+                (
+                    event
+                    for event in transaction.events
+                    if event.action_type == ActionType.CREATED
+                ),
+                None
+            )
+
+            if created_event and created_event.performed_by == current_user.id:
+                return
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="DOCUMENT_OPERATION_FORBIDDEN"
+        )
+
+    @staticmethod
     def create_transaction(
         db: Session,
         transaction_data: TransactionCreate,
@@ -612,7 +647,7 @@ class TransactionService:
     ) -> Transaction:
         """
         Upload a document to a transaction.
-        Only allowed if transaction is in PENDING status.
+        Allowed for any transaction status.
         """
         UserService.validate_user_active(current_user)
         
@@ -628,9 +663,9 @@ class TransactionService:
         TransactionService._validate_user_can_access_branch(
             current_user, transaction.branch_id, db
         )
-        
-        # Validate editable
-        TransactionService._validate_transaction_editable(transaction)
+
+        # Validate document operation permissions
+        TransactionService._validate_document_permission(transaction, current_user)
         
         # Delete old document if exists
         if transaction.document_url:
@@ -694,7 +729,7 @@ class TransactionService:
     ) -> Transaction:
         """
         Delete the document from a transaction.
-        Only allowed if transaction is in PENDING status.
+        Allowed for any transaction status.
         """
         UserService.validate_user_active(current_user)
         
@@ -710,9 +745,9 @@ class TransactionService:
         TransactionService._validate_user_can_access_branch(
             current_user, transaction.branch_id, db
         )
-        
-        # Validate editable
-        TransactionService._validate_transaction_editable(transaction)
+
+        # Validate document operation permissions
+        TransactionService._validate_document_permission(transaction, current_user)
         
         if transaction.document_url:
             TransactionDocumentHandler.delete_document(transaction.document_url)

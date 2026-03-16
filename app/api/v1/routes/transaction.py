@@ -242,7 +242,8 @@ async def upload_document(
 ):
     """
     Upload a document to a transaction.
-    Only allowed if transaction is in PENDING status.
+    ADMIN/MANAGER: allowed for any transaction status.
+    EMPLOYEE: allowed for PENDING, or for COMPLETED/CANCELLED only if they created the transaction.
     
     Supported formats: PDF, Word, Excel, Images (JPG, PNG, WebP)
     Maximum size: 10MB
@@ -293,7 +294,8 @@ def delete_document(
 ):
     """
     Delete the document from a transaction.
-    Only allowed if transaction is in PENDING status.
+    ADMIN/MANAGER: allowed for any transaction status.
+    EMPLOYEE: allowed for PENDING, or for COMPLETED/CANCELLED only if they created the transaction.
     """
     transaction = TransactionService.delete_document(db, transaction_id, current_user)
     return transaction
