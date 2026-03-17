@@ -232,6 +232,37 @@ class TransactionService:
             )
 
     @staticmethod
+    def _validate_user_can_access_transaction(
+        current_user: User, transaction: Transaction, db: Session
+    ) -> None:
+        """
+        Validate that user can access a specific transaction.
+        - Access via origin branch, OR
+        - For TRANSFER type, access via destination branch.
+        """
+        try:
+            TransactionService._validate_user_can_access_branch(
+                current_user, transaction.branch_id, db
+            )
+            return
+        except HTTPException:
+            pass
+
+        if transaction.operation_type == OperationType.TRANSFER and transaction.destination_branch_id:
+            try:
+                TransactionService._validate_user_can_access_branch(
+                    current_user, transaction.destination_branch_id, db
+                )
+                return
+            except HTTPException:
+                pass
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="BRANCH_ACCESS_DENIED"
+        )
+
+    @staticmethod
     def _validate_items_belong_to_company(db: Session, item_ids: List[int], company_id: int) -> List[Item]:
         """
         Validate that all items exist, are active, and belong to the company.
@@ -415,6 +446,22 @@ class TransactionService:
         )
 
     @staticmethod
+    def _validate_transfer_send_permission(
+        db: Session,
+        transaction: Transaction,
+        current_user: User
+    ) -> None:
+        """
+        Sending transfer (PENDING -> TRANSIT) requires origin branch access
+        or a user without branch association.
+        """
+        TransactionService._validate_user_can_access_branch(
+            current_user,
+            transaction.branch_id,
+            db
+        )
+
+    @staticmethod
     def _validate_transaction_cancelable(transaction: Transaction) -> None:
         """Validate that transaction can be canceled (PENDING or TRANSIT)."""
         if transaction.status not in (TransactionStatus.PENDING, TransactionStatus.TRANSIT):
@@ -422,6 +469,33 @@ class TransactionService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="TRANSACTION_NOT_CANCELABLE"
             )
+
+    @staticmethod
+    def _validate_transfer_cancel_permission(
+        db: Session,
+        transaction: Transaction,
+        current_user: User
+    ) -> None:
+        """
+        Cancel permissions for transfers by status:
+        - PENDING: origin branch users or users without branch association.
+        - TRANSIT: destination branch users or users without branch association.
+        """
+        if transaction.status == TransactionStatus.PENDING:
+            TransactionService._validate_transfer_send_permission(
+                db=db,
+                transaction=transaction,
+                current_user=current_user
+            )
+            return
+
+        if transaction.status == TransactionStatus.TRANSIT:
+            TransactionService._validate_transfer_terminal_completion_permission(
+                db=db,
+                transaction=transaction,
+                current_user=current_user
+            )
+            return
 
     @staticmethod
     def _validate_transaction_editable(transaction: Transaction) -> None:
@@ -435,34 +509,114 @@ class TransactionService:
             )
 
     @staticmethod
-    def _validate_document_permission(transaction: Transaction, current_user: User) -> None:
+    def _validate_document_permission(db: Session, transaction: Transaction, current_user: User) -> None:
         """
         Validate document upload/delete permissions.
 
         Rules:
-        - ADMIN/MANAGER keep current permissions.
-        - EMPLOYEE can always manage documents for PENDING transactions.
-        - EMPLOYEE can manage documents for COMPLETED/CANCELLED only if they created
-          the transaction (CREATED event performed_by matches user id).
+        - PENDING:
+          - Users from origin branch
+          - Users without branch association
+        - TRANSIT:
+          - Users from origin branch
+          - Users from destination branch
+          - Users without branch association
+        - COMPLETED/CANCELLED:
+          - MANAGER in origin/destination branch
+          - MANAGER/ADMIN without branch association
+          - EMPLOYEE in origin branch if created CREATED/SENT/COMPLETED/CANCELLED event
+          - EMPLOYEE in destination branch if created COMPLETED/CANCELLED event
         """
-        if current_user.role != Role.EMPLOYEE:
-            return
-
         if transaction.status == TransactionStatus.PENDING:
-            return
+            try:
+                TransactionService._validate_user_can_access_branch(
+                    current_user, transaction.branch_id, db
+                )
+                return
+            except HTTPException:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="DOCUMENT_OPERATION_FORBIDDEN"
+                )
 
-        if transaction.status in (TransactionStatus.COMPLETED, TransactionStatus.CANCELLED):
-            created_event = next(
-                (
-                    event
-                    for event in transaction.events
-                    if event.action_type == ActionType.CREATED
-                ),
-                None
+        if transaction.status == TransactionStatus.TRANSIT:
+            try:
+                TransactionService._validate_user_can_access_branch(
+                    current_user, transaction.branch_id, db
+                )
+                return
+            except HTTPException:
+                pass
+
+            if transaction.destination_branch_id is not None:
+                try:
+                    TransactionService._validate_user_can_access_branch(
+                        current_user, transaction.destination_branch_id, db
+                    )
+                    return
+                except HTTPException:
+                    pass
+
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="DOCUMENT_OPERATION_FORBIDDEN"
             )
 
-            if created_event and created_event.performed_by == current_user.id:
-                return
+        if transaction.status in (TransactionStatus.COMPLETED, TransactionStatus.CANCELLED):
+            if current_user.role in (Role.ADMIN, Role.MANAGER):
+                if current_user.branch_id is None:
+                    return
+
+                if current_user.role == Role.MANAGER and current_user.branch_id in (
+                    transaction.branch_id,
+                    transaction.destination_branch_id,
+                ):
+                    return
+
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="DOCUMENT_OPERATION_FORBIDDEN"
+                )
+
+            if current_user.role == Role.EMPLOYEE:
+                if current_user.branch_id is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="DOCUMENT_OPERATION_FORBIDDEN"
+                    )
+
+                allowed_actions = set()
+                if current_user.branch_id == transaction.branch_id:
+                    allowed_actions.update({
+                        ActionType.CREATED,
+                        ActionType.SENT,
+                        ActionType.COMPLETED,
+                        ActionType.CANCELLED,
+                    })
+
+                if (
+                    transaction.destination_branch_id is not None
+                    and current_user.branch_id == transaction.destination_branch_id
+                ):
+                    allowed_actions.update({
+                        ActionType.COMPLETED,
+                        ActionType.CANCELLED,
+                    })
+
+                if not allowed_actions:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="DOCUMENT_OPERATION_FORBIDDEN"
+                    )
+
+                for event in transaction.events:
+                    if event.performed_by == current_user.id and event.action_type in allowed_actions:
+                        return
+
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="DOCUMENT_OPERATION_FORBIDDEN"
+                )
 
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -733,13 +887,20 @@ class TransactionService:
                 detail="TRANSACTION_NOT_FOUND"
             )
         
-        # Validate access
-        TransactionService._validate_user_can_access_branch(
-            current_user, transaction.branch_id, db
-        )
-        
         # Validate cancelable
         TransactionService._validate_transaction_cancelable(transaction)
+
+        # Validate access
+        if transaction.operation_type == OperationType.TRANSFER:
+            TransactionService._validate_transfer_cancel_permission(
+                db=db,
+                transaction=transaction,
+                current_user=current_user
+            )
+        else:
+            TransactionService._validate_user_can_access_branch(
+                current_user, transaction.branch_id, db
+            )
         
         # Update status
         transaction.status = TransactionStatus.CANCELLED
@@ -801,6 +962,12 @@ class TransactionService:
                 transaction=transaction,
                 current_user=current_user
             )
+        elif transaction.operation_type == OperationType.TRANSFER and transaction.status == TransactionStatus.PENDING:
+            TransactionService._validate_transfer_send_permission(
+                db=db,
+                transaction=transaction,
+                current_user=current_user
+            )
         else:
             TransactionService._validate_user_can_access_branch(
                 current_user, transaction.branch_id, db
@@ -847,8 +1014,8 @@ class TransactionService:
             )
         
         # Validate access
-        TransactionService._validate_user_can_access_branch(
-            current_user, transaction.branch_id, db
+        TransactionService._validate_user_can_access_transaction(
+            current_user, transaction, db
         )
         
         return transaction
@@ -921,13 +1088,8 @@ class TransactionService:
                 detail="TRANSACTION_NOT_FOUND"
             )
         
-        # Validate access
-        TransactionService._validate_user_can_access_branch(
-            current_user, transaction.branch_id, db
-        )
-
         # Validate document operation permissions
-        TransactionService._validate_document_permission(transaction, current_user)
+        TransactionService._validate_document_permission(db, transaction, current_user)
         
         # Delete old document if exists
         if transaction.document_url:
@@ -964,8 +1126,8 @@ class TransactionService:
             )
         
         # Validate access
-        TransactionService._validate_user_can_access_branch(
-            current_user, transaction.branch_id, db
+        TransactionService._validate_user_can_access_transaction(
+            current_user, transaction, db
         )
         
         if not transaction.document_url:
@@ -1003,13 +1165,8 @@ class TransactionService:
                 detail="TRANSACTION_NOT_FOUND"
             )
         
-        # Validate access
-        TransactionService._validate_user_can_access_branch(
-            current_user, transaction.branch_id, db
-        )
-
         # Validate document operation permissions
-        TransactionService._validate_document_permission(transaction, current_user)
+        TransactionService._validate_document_permission(db, transaction, current_user)
         
         if transaction.document_url:
             TransactionDocumentHandler.delete_document(transaction.document_url)

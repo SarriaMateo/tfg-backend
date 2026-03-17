@@ -1185,6 +1185,173 @@ async def test_complete_transfer_in_transit_allowed_for_destination_branch_user(
     assert movements[0].quantity == 3
 
 
+@pytest.mark.asyncio
+async def test_complete_transfer_pending_forbidden_for_destination_branch_user(
+    client, db_session, company_with_transactions_data
+):
+    """Test destination branch user cannot send transfer in PENDING."""
+    data = company_with_transactions_data
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    destination_user = User(
+        name="Employee B",
+        username="employee_b_pending_complete",
+        hashed_password=hash_password("password123"),
+        role=Role.EMPLOYEE,
+        is_active=True,
+        company_id=data["company"].id,
+        branch_id=destination_branch.id
+    )
+    db_session.add(destination_user)
+    db_session.flush()
+
+    seed_tx = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        branch_id=source_branch.id
+    )
+    db_session.add(seed_tx)
+    db_session.flush()
+    db_session.add(StockMovement(
+        quantity=10,
+        movement_type=MovementType.IN,
+        item_id=item.id,
+        branch_id=source_branch.id,
+        transaction_id=seed_tx.id
+    ))
+
+    transfer = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.PENDING,
+        branch_id=source_branch.id,
+        destination_branch_id=destination_branch.id
+    )
+    db_session.add(transfer)
+    db_session.flush()
+    db_session.add(TransactionLine(quantity=4, item_id=item.id, transaction_id=transfer.id))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transfer.id,
+        performed_by=data["users"]["admin"].id
+    ))
+    db_session.commit()
+
+    token = build_token(destination_user)
+    response = await client.post(
+        f"/api/v1/transactions/{transfer.id}/complete",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "BRANCH_ACCESS_DENIED"
+
+
+@pytest.mark.asyncio
+async def test_destination_branch_user_can_view_transfer_in_transit(
+    client, db_session, company_with_transactions_data
+):
+    """Test destination branch user can view TRANSFER in TRANSIT via GET /transactions/{id}."""
+    data = company_with_transactions_data
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    destination_user = User(
+        name="Employee B",
+        username="employee_b",
+        hashed_password=hash_password("password123"),
+        role=Role.EMPLOYEE,
+        is_active=True,
+        company_id=data["company"].id,
+        branch_id=destination_branch.id
+    )
+    db_session.add(destination_user)
+    db_session.flush()
+
+    transfer = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.TRANSIT,
+        branch_id=source_branch.id,
+        destination_branch_id=destination_branch.id
+    )
+    db_session.add(transfer)
+    db_session.flush()
+    db_session.add(TransactionLine(quantity=5, item_id=item.id, transaction_id=transfer.id))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transfer.id,
+        performed_by=data["users"]["admin"].id
+    ))
+    db_session.commit()
+
+    token = build_token(destination_user)
+    response = await client.get(
+        f"/api/v1/transactions/{transfer.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["id"] == transfer.id
+    assert result["status"] == "TRANSIT"
+    assert result["operation_type"] == "TRANSFER"
+    assert result["destination_branch_id"] == destination_branch.id
+
+
+@pytest.mark.asyncio
+async def test_destination_branch_user_can_view_transfer_in_pending(
+    client, db_session, company_with_transactions_data
+):
+    """Test destination branch user can view TRANSFER in PENDING."""
+    data = company_with_transactions_data
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    destination_user = User(
+        name="Employee B",
+        username="employee_b",
+        hashed_password=hash_password("password123"),
+        role=Role.EMPLOYEE,
+        is_active=True,
+        company_id=data["company"].id,
+        branch_id=destination_branch.id
+    )
+    db_session.add(destination_user)
+    db_session.flush()
+
+    transfer = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.PENDING,
+        branch_id=source_branch.id,
+        destination_branch_id=destination_branch.id
+    )
+    db_session.add(transfer)
+    db_session.flush()
+    db_session.add(TransactionLine(quantity=5, item_id=item.id, transaction_id=transfer.id))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transfer.id,
+        performed_by=data["users"]["admin"].id
+    ))
+    db_session.commit()
+
+    token = build_token(destination_user)
+    response = await client.get(
+        f"/api/v1/transactions/{transfer.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["id"] == transfer.id
+    assert result["status"] == "PENDING"
+    assert result["operation_type"] == "TRANSFER"
+    assert result["destination_branch_id"] == destination_branch.id
+
+
 # =============================================================================
 # CANCEL TRANSACTION TESTS
 # =============================================================================
@@ -1281,6 +1448,93 @@ async def test_cancel_transaction_in_transit_success(
 
     assert response.status_code == 200
     assert response.json()["status"] == "CANCELLED"
+
+
+@pytest.mark.asyncio
+async def test_destination_branch_user_cannot_cancel_transfer_in_pending(
+    client, db_session, company_with_transactions_data
+):
+    """Test destination branch user cannot cancel transfer in PENDING."""
+    data = company_with_transactions_data
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    destination_user = User(
+        name="Employee B",
+        username="employee_b_pending_cancel",
+        hashed_password=hash_password("password123"),
+        role=Role.EMPLOYEE,
+        is_active=True,
+        company_id=data["company"].id,
+        branch_id=destination_branch.id
+    )
+    db_session.add(destination_user)
+    db_session.flush()
+
+    transfer = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.PENDING,
+        branch_id=source_branch.id,
+        destination_branch_id=destination_branch.id
+    )
+    db_session.add(transfer)
+    db_session.flush()
+    db_session.add(TransactionLine(quantity=2, item_id=item.id, transaction_id=transfer.id))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transfer.id,
+        performed_by=data["users"]["admin"].id
+    ))
+    db_session.commit()
+
+    token = build_token(destination_user)
+    response = await client.post(
+        f"/api/v1/transactions/{transfer.id}/cancel",
+        json={"cancel_reason": "Destination canceled"},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "BRANCH_ACCESS_DENIED"
+
+
+@pytest.mark.asyncio
+async def test_source_branch_user_cannot_cancel_transfer_in_transit(
+    client, db_session, company_with_transactions_data
+):
+    """Test source branch user cannot cancel transfer in TRANSIT."""
+    data = company_with_transactions_data
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+    source_user = data["users"]["employee_branch_a"]
+
+    transfer = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.TRANSIT,
+        branch_id=source_branch.id,
+        destination_branch_id=destination_branch.id
+    )
+    db_session.add(transfer)
+    db_session.flush()
+    db_session.add(TransactionLine(quantity=2, item_id=item.id, transaction_id=transfer.id))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transfer.id,
+        performed_by=data["users"]["admin"].id
+    ))
+    db_session.commit()
+
+    token = build_token(source_user)
+    response = await client.post(
+        f"/api/v1/transactions/{transfer.id}/cancel",
+        json={"cancel_reason": "Source user tried"},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "BRANCH_ACCESS_DENIED"
 
 
 @pytest.mark.asyncio

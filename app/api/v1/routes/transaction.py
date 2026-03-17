@@ -52,7 +52,7 @@ def list_transactions(
     If user has assigned branch, only shows transactions from that branch.
     
     Filters:
-    - branch_id: Filter by branch
+    - branch_id: Filter by branch as origin or as destination
     - operation_type: Filter by operation type (IN, OUT, TRANSFER, ADJUSTMENT)
     - status: Filter by status (PENDING, CANCELLED, COMPLETED)
     - performed_by: Filter by user who performed action
@@ -136,7 +136,8 @@ def get_transaction(
 ):
     """
     Get a transaction by ID with full details including events.
-    User can only view transactions from their accessible branches.
+    User can view transactions from their accessible branches.
+    For TRANSFER type, also allows access if user is associated with destination branch.
     """
     transaction = TransactionService.get_transaction(db, transaction_id, current_user)
     return transaction
@@ -187,6 +188,8 @@ def cancel_transaction(
     
     Validations:
     - Transaction must exist and belong to user's accessible branches
+    - For TRANSFER in PENDING, only origin branch (or central user) can cancel
+    - For TRANSFER in TRANSIT, only destination branch (or central user) can cancel
     - Transaction must be in PENDING or TRANSIT status
     
     Actions:
@@ -215,6 +218,8 @@ def complete_transaction(
     
     Validations:
     - Transaction must exist and belong to user's accessible branches
+    - For TRANSFER in PENDING, only origin branch (or central user) can send to TRANSIT
+    - For TRANSFER in TRANSIT, only destination branch (or central user) can receive to COMPLETED
     - IN/OUT transactions must be in PENDING status
     - TRANSFER transactions move PENDING -> TRANSIT on first completion
     - TRANSFER transactions move TRANSIT -> COMPLETED on second completion

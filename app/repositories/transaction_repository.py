@@ -45,7 +45,7 @@ class TransactionRepository:
         
         Filters:
         - company_id: Required, filter by company
-        - branch_id: Optional, filter by branch
+        - branch_id: Optional, filter by branch as origin or as destination
         - operation_type: Optional, filter by operation type (IN, OUT, TRANSFER, ADJUSTMENT)
         - status: Optional, filter by status (PENDING, CANCELLED, COMPLETED)
         - performed_by: Optional, filter by user who completed the transaction
@@ -65,7 +65,13 @@ class TransactionRepository:
 
         # Apply filters
         if branch_id is not None:
-            query = query.filter(Transaction.branch_id == branch_id)
+            # Filter by branch as origin or as destination
+            query = query.filter(
+                or_(
+                    Transaction.branch_id == branch_id,
+                    Transaction.destination_branch_id == branch_id
+                )
+            )
         
         if operation_type is not None:
             query = query.filter(Transaction.operation_type == operation_type)
