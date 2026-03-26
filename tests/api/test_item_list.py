@@ -325,3 +325,181 @@ async def test_list_items_admin_sees_active_and_inactive_by_default(client, acti
     assert payload["total"] == 4
     item_names = [item["name"] for item in payload["data"]]
     assert "Soap" in item_names
+
+
+@pytest.mark.asyncio
+async def test_get_item_image_uses_stored_image_name_in_download(
+    client,
+    active_admin_same_company,
+    company_with_data,
+):
+    token = build_token(active_admin_same_company)
+    item = company_with_data["items"][0]
+
+    upload_response = await client.post(
+        f"/api/v1/items/{item.id}/image",
+        files={"image": ("foto_producto.jpg", b"fake-jpg-content", "image/jpeg")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert upload_response.status_code == 200
+
+    response = await client.get(
+        f"/api/v1/items/{item.id}/image",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    content_disposition = response.headers.get("content-disposition", "")
+    assert 'filename="foto_producto.jpg"' in content_disposition
+
+
+@pytest.mark.asyncio
+async def test_get_item_image_uses_unknown_when_image_name_missing(
+    client,
+    active_admin_same_company,
+    company_with_data,
+    db_session,
+):
+    from app.core.file_handler import ItemImageHandler
+
+    token = build_token(active_admin_same_company)
+    item = company_with_data["items"][1]
+
+    image_url = ItemImageHandler.save_image(
+        b"fake-png-content",
+        "fallback.png",
+        active_admin_same_company.company_id,
+    )
+    item.image_url = image_url
+    item.image_name = None
+    db_session.add(item)
+    db_session.commit()
+
+    response = await client.get(
+        f"/api/v1/items/{item.id}/image",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    content_disposition = response.headers.get("content-disposition", "")
+    assert 'filename="unknown"' in content_disposition
+
+
+@pytest.mark.asyncio
+async def test_upload_item_image_replaces_previous_image_and_updates_name(
+    client,
+    active_admin_same_company,
+    company_with_data,
+):
+    token = build_token(active_admin_same_company)
+    item = company_with_data["items"][2]
+
+    first_upload = await client.post(
+        f"/api/v1/items/{item.id}/image",
+        files={"image": ("first.jpg", b"first-content", "image/jpeg")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert first_upload.status_code == 200
+    assert first_upload.json()["has_image"] is True
+
+    second_upload = await client.post(
+        f"/api/v1/items/{item.id}/image",
+        files={"image": ("second.png", b"second-content", "image/png")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert second_upload.status_code == 200
+    assert second_upload.json()["has_image"] is True
+
+    get_response = await client.get(
+        f"/api/v1/items/{item.id}/image",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert get_response.status_code == 200
+    content_disposition = get_response.headers.get("content-disposition", "")
+    assert 'filename="second.png"' in content_disposition
+
+
+@pytest.mark.asyncio
+async def test_delete_item_image_is_idempotent_and_returns_has_image_false(
+    client,
+    active_admin_same_company,
+    company_with_data,
+):
+    token = build_token(active_admin_same_company)
+    item = company_with_data["items"][3]
+
+    upload_response = await client.post(
+        f"/api/v1/items/{item.id}/image",
+        files={"image": ("to_delete.jpg", b"delete-content", "image/jpeg")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert upload_response.status_code == 200
+    assert upload_response.json()["has_image"] is True
+
+    first_delete = await client.delete(
+        f"/api/v1/items/{item.id}/image",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert first_delete.status_code == 200
+    assert first_delete.json()["has_image"] is False
+
+    second_delete = await client.delete(
+        f"/api/v1/items/{item.id}/image",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert second_delete.status_code == 200
+    assert second_delete.json()["has_image"] is False
+
+
+@pytest.mark.asyncio
+async def test_user_from_other_company_cannot_access_item_image_endpoints(
+    client,
+    active_admin_same_company,
+    company_with_data,
+    db_session,
+):
+    other_company = Company(
+        name="Other Co",
+        email="other@company.com",
+        nif="87654321X",
+    )
+    db_session.add(other_company)
+    db_session.flush()
+
+    other_admin = User(
+        name="Other Admin",
+        username="other_company_admin",
+        hashed_password=hash_password("password123"),
+        role=Role.ADMIN,
+        is_active=True,
+        company_id=other_company.id,
+        branch_id=None,
+    )
+    db_session.add(other_admin)
+    db_session.commit()
+    db_session.refresh(other_admin)
+
+    other_token = build_token(other_admin)
+    item = company_with_data["items"][0]
+
+    get_response = await client.get(
+        f"/api/v1/items/{item.id}/image",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert get_response.status_code == 403
+    assert get_response.json()["detail"] == "ITEM_NOT_FOUND"
+
+    post_response = await client.post(
+        f"/api/v1/items/{item.id}/image",
+        files={"image": ("other.jpg", b"other-content", "image/jpeg")},
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert post_response.status_code == 403
+    assert post_response.json()["detail"] == "ITEM_NOT_FOUND"
+
+    delete_response = await client.delete(
+        f"/api/v1/items/{item.id}/image",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert delete_response.status_code == 403
+    assert delete_response.json()["detail"] == "ITEM_NOT_FOUND"

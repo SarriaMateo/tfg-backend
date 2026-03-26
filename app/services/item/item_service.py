@@ -22,12 +22,26 @@ class ItemService:
     """Business logic service for items"""
 
     @staticmethod
+    def _validate_image_write_permission(current_user: User) -> None:
+        """Allow image write operations only to active MANAGER/ADMIN users."""
+        UserService.validate_user_active(current_user)
+
+        if current_user.role not in (Role.MANAGER, Role.ADMIN):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="INSUFFICIENT_ROLE"
+            )
+
+    @staticmethod
+    def _validate_image_read_permission(current_user: User) -> None:
+        """Allow image read operations to any active user."""
+        UserService.validate_user_active(current_user)
+
+    @staticmethod
     def create_item(
         db: Session,
         item_data: ItemCreate,
-        current_user: User,
-        image_file: Optional[bytes] = None,
-        image_filename: Optional[str] = None
+        current_user: User
     ) -> Item:
         """
         Create a new item. Only MANAGER and ADMIN can create items.
@@ -53,11 +67,6 @@ class ItemService:
                 detail="SKU_ALREADY_EXISTS"
             )
 
-        # Handle image upload if provided
-        image_url = None
-        if image_file and image_filename:
-            image_url = ItemImageHandler.save_image(image_file, image_filename, current_user.company_id)
-
         item = Item(
             name=item_data.name,
             sku=item_data.sku,
@@ -65,7 +74,6 @@ class ItemService:
             description=item_data.description,
             price=item_data.price,
             brand=item_data.brand,
-            image_url=image_url,
             company_id=current_user.company_id
         )
 
@@ -105,10 +113,7 @@ class ItemService:
         db: Session,
         item_id: int,
         item_data: ItemUpdate,
-        current_user: User,
-        image_file: Optional[bytes] = None,
-        image_filename: Optional[str] = None,
-        delete_image: bool = False
+        current_user: User
     ) -> Item:
         """
         Update an item. Only MANAGER and ADMIN can update items.
@@ -151,19 +156,6 @@ class ItemService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail="SKU_ALREADY_EXISTS"
                 )
-
-        # Handle image update if new image is provided, or delete if flag is set
-        if image_file and image_filename:
-            # Delete old image if it exists
-            if item.image_url:
-                ItemImageHandler.delete_image(item.image_url)
-            # Save new image
-            item.image_url = ItemImageHandler.save_image(image_file, image_filename, current_user.company_id)
-        elif delete_image:
-            # Delete image if flag is set
-            if item.image_url:
-                ItemImageHandler.delete_image(item.image_url)
-            item.image_url = None
 
         # Update only provided fields
         if item_data.name is not None:
@@ -298,10 +290,10 @@ class ItemService:
         db: Session,
         item_id: int,
         current_user: User
-    ) -> tuple[Path, str]:
+    ) -> tuple[Path, str, str]:
         """
         Get image file path for an item with security validation.
-        Returns a tuple of (file_path: Path, media_type: str)
+        Returns a tuple of (file_path: Path, media_type: str, download_name: str)
         
         Validations:
         - User must be authenticated
@@ -309,7 +301,7 @@ class ItemService:
         - Item must have an image
         - Image file must exist on filesystem
         """
-        UserService.validate_user_active(current_user)
+        ItemService._validate_image_read_permission(current_user)
         
         # Verify user has access to this item (must be from same company)
         item = ItemService.get_item(db, item_id, current_user)
@@ -337,7 +329,57 @@ class ItemService:
         if not media_type:
             media_type = "application/octet-stream"
         
-        return image_path, media_type
+        download_name = item.image_name or "unknown"
+
+        return image_path, media_type, download_name
+
+    @staticmethod
+    def upload_item_image(
+        db: Session,
+        item_id: int,
+        current_user: User,
+        image_file: bytes,
+        image_filename: str
+    ) -> Item:
+        """Upload or replace image for an item."""
+        ItemService._validate_image_write_permission(current_user)
+
+        item = ItemService.get_item(db, item_id, current_user)
+
+        if item.image_url:
+            ItemImageHandler.delete_image(item.image_url)
+
+        item.image_url = ItemImageHandler.save_image(
+            image_file,
+            image_filename,
+            item.company_id
+        )
+        item.image_name = image_filename
+
+        ItemRepository.update(db, item)
+        ItemRepository.commit(db)
+        return item
+
+    @staticmethod
+    def delete_item_image(
+        db: Session,
+        item_id: int,
+        current_user: User
+    ) -> Item:
+        """Delete image for an item."""
+        ItemService._validate_image_write_permission(current_user)
+
+        item = ItemService.get_item(db, item_id, current_user)
+
+        if item.image_url:
+            ItemImageHandler.delete_image(item.image_url)
+
+        item.image_url = None
+        item.image_name = None
+
+        ItemRepository.update(db, item)
+        ItemRepository.commit(db)
+        return item
 
     @staticmethod
     def list_items(
@@ -468,7 +510,7 @@ class ItemService:
                 description=item.description,
                 price=item.price,
                 brand=item.brand,
-                image_url=item.image_url,
+                has_image=bool(item.image_url),
                 company_id=item.company_id,
                 stock_by_branch=stock_by_branch
             )

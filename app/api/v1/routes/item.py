@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, status, Form, Query, Request
+from fastapi import APIRouter, Depends, status, Query, UploadFile, File
 from starlette.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional, Literal
@@ -56,14 +56,7 @@ def list_items(
     status_code=status.HTTP_201_CREATED
 )
 async def create_item(
-    name: str = Form(...),
-    sku: str = Form(...),
-    unit: str = Form(...),
-    description: Optional[str] = Form(None),
-    price: Optional[float] = Form(None),
-    brand: Optional[str] = Form(None),
-    image_url_form: Optional[str] = Form(None),
-    image: Optional[UploadFile] = File(None),
+    item_data: ItemCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("MANAGER", "ADMIN"))
 ):
@@ -71,25 +64,7 @@ async def create_item(
     Create a new item. Only MANAGER and ADMIN can create items.
     Company is extracted from the authenticated user.
     """
-    # Build ItemCreate from form data
-    item_data = ItemCreate(
-        name=name,
-        sku=sku,
-        unit=unit,
-        description=description,
-        price=price,
-        brand=brand,
-        image_url=image_url_form
-    )
-
-    # Read image content if provided
-    image_file = None
-    image_filename = None
-    if image:
-        image_file = await image.read()
-        image_filename = image.filename
-
-    new_item = ItemService.create_item(db, item_data, current_user, image_file, image_filename)
+    new_item = ItemService.create_item(db, item_data, current_user)
     ItemRepository.commit(db)
     return new_item
 
@@ -118,63 +93,18 @@ def get_item(
 )
 async def update_item(
     item_id: int,
-    request: Request,
-    name: Optional[str] = Form(None),
-    sku: Optional[str] = Form(None),
-    unit: Optional[str] = Form(None),
-    description: Optional[str] = Form(None),
-    price: Optional[float] = Form(None),
-    brand: Optional[str] = Form(None),
-    is_active: Optional[bool] = Form(None),
-    delete_image: Optional[bool] = Form(None),
-    image: Optional[UploadFile] = File(None),
+    item_data: ItemUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("MANAGER", "ADMIN"))
 ):
     """
     Update an item. Only MANAGER and ADMIN can update items.
     
-    To clear an optional field (description, price, brand, image_url), 
+    To clear an optional field (description, price, brand),
     explicitly send the field with null/empty value.
     To preserve a field unchanged, simply don't include it in the request.
-    To delete the current image, send delete_image=true.
     """
-    # Get form data to detect which fields were actually sent
-    form_data = await request.form()
-    sent_fields = set(form_data.keys()) - {'image', 'delete_image'}  # Exclude file uploads and image deletion flag
-    
-    # Build ItemUpdate only with fields that were explicitly sent
-    update_data = {}
-    
-    if 'name' in sent_fields:
-        update_data['name'] = name
-    if 'sku' in sent_fields:
-        update_data['sku'] = sku
-    if 'unit' in sent_fields:
-        update_data['unit'] = unit
-    if 'description' in sent_fields:
-        update_data['description'] = description
-    if 'price' in sent_fields:
-        update_data['price'] = price
-    if 'brand' in sent_fields:
-        update_data['brand'] = brand
-    if 'is_active' in sent_fields:
-        update_data['is_active'] = is_active
-    
-    item_data = ItemUpdate(**update_data)
-
-    # Handle image upload if provided, or delete if flag is set
-    image_file = None
-    image_filename = None
-    
-    if image:
-        # New image file is being uploaded
-        image_file = await image.read()
-        image_filename = image.filename
-
-    updated_item = ItemService.update_item(
-        db, item_id, item_data, current_user, image_file, image_filename, delete_image or False
-    )
+    updated_item = ItemService.update_item(db, item_id, item_data, current_user)
     ItemRepository.commit(db)
     return updated_item
 
@@ -249,5 +179,47 @@ def get_item_image(
     Requires authentication and company ownership verification.
     Returns the image file if it exists, 404 otherwise.
     """
-    image_path, media_type = ItemService.get_item_image(db, item_id, current_user)
-    return FileResponse(path=image_path, media_type=media_type)
+    image_path, media_type, download_name = ItemService.get_item_image(db, item_id, current_user)
+    return FileResponse(path=image_path, media_type=media_type, filename=download_name)
+
+
+@router.post(
+    "/{item_id}/image",
+    response_model=ItemResponse,
+    status_code=status.HTTP_200_OK
+)
+async def upload_item_image(
+    item_id: int,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload or replace an image for an item."""
+    image_file = await image.read()
+    image_filename = image.filename or "unknown"
+
+    item = ItemService.upload_item_image(
+        db=db,
+        item_id=item_id,
+        current_user=current_user,
+        image_file=image_file,
+        image_filename=image_filename,
+    )
+    ItemRepository.commit(db)
+    return item
+
+
+@router.delete(
+    "/{item_id}/image",
+    response_model=ItemResponse,
+    status_code=status.HTTP_200_OK
+)
+def delete_item_image(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete the image associated to an item."""
+    item = ItemService.delete_item_image(db, item_id, current_user)
+    ItemRepository.commit(db)
+    return item

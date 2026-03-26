@@ -259,10 +259,9 @@ class TestInactiveUsersProtectedEndpoints:
             "branch_id": inactive_manager.branch_id,
         })
 
-        # Use FormData for file upload endpoint
         response = await client.post(
             "/api/v1/items",
-            data={"name": "Test Item", "sku": "SKU123", "unit": "ud"},
+            json={"name": "Test Item", "sku": "SKU123", "unit": "ud"},
             headers={"Authorization": f"Bearer {token}"}
         )
 
@@ -365,6 +364,126 @@ class TestInactiveUsersProtectedEndpoints:
 
         assert response.status_code == 403
         assert response.json()["detail"] == "USER_INACTIVE"
+
+    @pytest.mark.asyncio
+    async def test_inactive_manager_cannot_upload_item_image(self, client: AsyncClient, inactive_manager, db_session, admin_user):
+        """Test that inactive managers cannot upload item images."""
+        from app.db.models.item import Item, Unit
+
+        item = Item(
+            name="Image Item",
+            sku="SKUIMG1",
+            unit=Unit.UNIT,
+            company_id=admin_user.company_id
+        )
+        db_session.add(item)
+        db_session.commit()
+        db_session.refresh(item)
+
+        token = create_access_token({
+            "sub": inactive_manager.username,
+            "user_id": inactive_manager.id,
+            "role": inactive_manager.role.value,
+            "company_id": inactive_manager.company_id,
+            "branch_id": inactive_manager.branch_id,
+        })
+
+        response = await client.post(
+            f"/api/v1/items/{item.id}/image",
+            files={"image": ("test.jpg", b"fake-jpg-content", "image/jpeg")},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "USER_INACTIVE"
+
+    @pytest.mark.asyncio
+    async def test_active_employee_cannot_upload_item_image(self, client: AsyncClient, db_session, admin_user):
+        """Test that active employees cannot upload item images."""
+        from app.db.models.item import Item, Unit
+
+        employee_user = User(
+            name="Employee User",
+            username="employee_item_image",
+            hashed_password=hash_password("employee123"),
+            role=Role.EMPLOYEE,
+            is_active=True,
+            company_id=admin_user.company_id,
+            branch_id=None,
+        )
+        db_session.add(employee_user)
+
+        item = Item(
+            name="Image Item",
+            sku="SKUIMG2",
+            unit=Unit.UNIT,
+            company_id=admin_user.company_id
+        )
+        db_session.add(item)
+        db_session.commit()
+        db_session.refresh(employee_user)
+        db_session.refresh(item)
+
+        token = create_access_token({
+            "sub": employee_user.username,
+            "user_id": employee_user.id,
+            "role": employee_user.role.value,
+            "company_id": employee_user.company_id,
+            "branch_id": employee_user.branch_id,
+        })
+
+        response = await client.post(
+            f"/api/v1/items/{item.id}/image",
+            files={"image": ("test.jpg", b"fake-jpg-content", "image/jpeg")},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "INSUFFICIENT_ROLE"
+
+    @pytest.mark.asyncio
+    async def test_active_employee_can_access_item_image_endpoint(self, client: AsyncClient, db_session, admin_user):
+        """Test that active employees can access GET item image endpoint for their company."""
+        from app.db.models.item import Item, Unit
+
+        employee_user = User(
+            name="Employee Reader",
+            username="employee_item_image_reader",
+            hashed_password=hash_password("employee123"),
+            role=Role.EMPLOYEE,
+            is_active=True,
+            company_id=admin_user.company_id,
+            branch_id=None,
+        )
+        db_session.add(employee_user)
+
+        item = Item(
+            name="Image Item",
+            sku="SKUIMG3",
+            unit=Unit.UNIT,
+            company_id=admin_user.company_id,
+            image_url=None
+        )
+        db_session.add(item)
+        db_session.commit()
+        db_session.refresh(employee_user)
+        db_session.refresh(item)
+
+        token = create_access_token({
+            "sub": employee_user.username,
+            "user_id": employee_user.id,
+            "role": employee_user.role.value,
+            "company_id": employee_user.company_id,
+            "branch_id": employee_user.branch_id,
+        })
+
+        response = await client.get(
+            f"/api/v1/items/{item.id}/image",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "IMAGE_NOT_FOUND"
 
     # CATEGORY ENDPOINTS
 

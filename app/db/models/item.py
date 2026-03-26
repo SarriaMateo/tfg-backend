@@ -43,6 +43,7 @@ class Item(Base):
     price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     brand: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    image_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     company_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("companies.id"),
@@ -62,3 +63,7 @@ class Item(Base):
         back_populates="item",
         cascade="all, delete-orphan"
     )
+
+    @property
+    def has_image(self) -> bool:
+        return bool(self.image_url)

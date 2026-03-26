@@ -350,10 +350,9 @@ class TestItemServiceUpdate:
         assert result.image_url == "https://example.com/image.jpg"
         mock_repo.update.assert_called_once()
 
-    @patch("app.services.item.item_service.ItemImageHandler")
     @patch("app.services.item.item_service.ItemRepository")
-    def test_update_item_delete_image_via_flag(self, mock_repo, mock_image_handler, mock_db, admin_user):
-        """Can delete image by sending empty image field (delete_image=True)"""
+    def test_update_item_cannot_delete_image_via_payload(self, mock_repo, mock_db, admin_user):
+        """Image fields are not handled by item update payload anymore."""
         item = Mock(spec=Item)
         item.id = 1
         item.sku = "SKU001"
@@ -363,16 +362,14 @@ class TestItemServiceUpdate:
 
         item_data = ItemUpdate()
 
-        result = ItemService.update_item(mock_db, 1, item_data, admin_user, delete_image=True)
+        result = ItemService.update_item(mock_db, 1, item_data, admin_user)
 
-        assert result.image_url is None
-        mock_image_handler.delete_image.assert_called_once_with("https://example.com/old-image.jpg")
+        assert result.image_url == "https://example.com/old-image.jpg"
         mock_repo.update.assert_called_once()
 
-    @patch("app.services.item.item_service.ItemImageHandler")
     @patch("app.services.item.item_service.ItemRepository")
-    def test_update_item_delete_image_no_existing_image(self, mock_repo, mock_image_handler, mock_db, admin_user):
-        """Deleting image when item has no image does nothing gracefully"""
+    def test_update_item_preserves_missing_image_without_payload(self, mock_repo, mock_db, admin_user):
+        """When no image payload is provided, image state remains unchanged."""
         item = Mock(spec=Item)
         item.id = 1
         item.sku = "SKU001"
@@ -382,11 +379,9 @@ class TestItemServiceUpdate:
 
         item_data = ItemUpdate()
 
-        result = ItemService.update_item(mock_db, 1, item_data, admin_user, delete_image=True)
+        result = ItemService.update_item(mock_db, 1, item_data, admin_user)
 
         assert result.image_url is None
-        # delete_image should not be called if there's no existing image
-        mock_image_handler.delete_image.assert_not_called()
         mock_repo.update.assert_called_once()
 
 
