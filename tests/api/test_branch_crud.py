@@ -662,6 +662,36 @@ async def test_delete_branch_with_transactions(client, admin_user, branch_empty,
 
 
 @pytest.mark.asyncio
+async def test_delete_branch_with_transactions_as_destination(client, admin_user, branch_empty, db_session):
+    """Cannot delete a branch referenced as destination branch in transfers"""
+    origin_branch = Branch(
+        name="Origin Branch",
+        address="Origin Street",
+        company_id=admin_user.company_id,
+    )
+    db_session.add(origin_branch)
+    db_session.flush()
+
+    transfer = Transaction(
+        operation_type=OperationType.TRANSFER,
+        branch_id=origin_branch.id,
+        destination_branch_id=branch_empty.id,
+    )
+    db_session.add(transfer)
+    db_session.commit()
+
+    token = get_admin_token(admin_user)
+
+    response = await client.delete(
+        f"/api/v1/branches/{branch_empty.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "BRANCH_HAS_TRANSACTIONS"
+
+
+@pytest.mark.asyncio
 async def test_delete_branch_non_admin(client, employee_no_branch, branch_empty):
     """An employee cannot delete branches"""
     token = get_token(employee_no_branch)

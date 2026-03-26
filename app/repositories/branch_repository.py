@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import Optional
 from app.db.models.branch import Branch
 from app.db.models.transaction import Transaction
@@ -42,7 +43,12 @@ class BranchRepository:
 
     @staticmethod
     def count_transactions_by_branch_id(db: Session, branch_id: int) -> int:
-        return db.query(Transaction).filter(Transaction.branch_id == branch_id).count()
+        return db.query(Transaction).filter(
+            or_(
+                Transaction.branch_id == branch_id,
+                Transaction.destination_branch_id == branch_id,
+            )
+        ).count()
 
     @staticmethod
     def commit(db: Session) -> None:
