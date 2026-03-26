@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 from datetime import datetime, timedelta
 from app.core.security import hash_password, create_access_token
 from app.db.models.user import User, Role
@@ -1572,8 +1573,8 @@ async def test_cannot_edit_cancelled_transaction(
         headers={"Authorization": f"Bearer {token}"}
     )
     
-    assert response.status_code == 400
-    assert "TRANSACTION_NOT_EDITABLE" in response.json()["detail"]
+    assert response.status_code == 403
+    assert response.json()["detail"] == "TRANSACTION_UPDATE_FORBIDDEN"
 
 
 @pytest.mark.asyncio
@@ -1611,8 +1612,8 @@ async def test_cannot_edit_transit_transaction(
         headers={"Authorization": f"Bearer {token}"}
     )
 
-    assert response.status_code == 400
-    assert "TRANSACTION_NOT_EDITABLE" in response.json()["detail"]
+    assert response.status_code == 403
+    assert response.json()["detail"] == "TRANSACTION_UPDATE_FORBIDDEN"
 
 
 @pytest.mark.asyncio
@@ -2314,3 +2315,110 @@ async def test_employee_can_delete_document_on_cancelled_transaction_created_by_
     assert response.status_code == 200
     result = response.json()
     assert result["document_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_destination_branch_user_can_get_document(
+    client, db_session, company_with_transactions_data
+):
+    data = company_with_transactions_data
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    destination_user = User(
+        name="Employee Destination",
+        username="employee_destination_get_doc",
+        hashed_password=hash_password("password123"),
+        role=Role.EMPLOYEE,
+        is_active=True,
+        company_id=data["company"].id,
+        branch_id=destination_branch.id
+    )
+    db_session.add(destination_user)
+    db_session.flush()
+
+    doc_dir = Path("media/transactions") / str(data["company"].id)
+    doc_dir.mkdir(parents=True, exist_ok=True)
+    doc_name = f"destination-access-{destination_user.id}.pdf"
+    doc_path = doc_dir / doc_name
+    doc_path.write_bytes(b"%PDF-1.4\n")
+
+    transaction = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.TRANSIT,
+        branch_id=source_branch.id,
+        destination_branch_id=destination_branch.id,
+        document_url=f"transactions/{data['company'].id}/{doc_name}"
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(
+        quantity=2,
+        item_id=item.id,
+        transaction_id=transaction.id
+    ))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=data["users"]["admin"].id
+    ))
+    db_session.commit()
+
+    token = build_token(destination_user)
+
+    response = await client.get(
+        f"/api/v1/transactions/{transaction.id}/document",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/pdf")
+
+
+@pytest.mark.asyncio
+async def test_user_without_branch_can_get_document(
+    client, db_session, company_with_transactions_data
+):
+    data = company_with_transactions_data
+    no_branch_user = data["users"]["employee_no_branch"]
+    source_branch = data["branches"][0]
+    item = data["items"][0]
+
+    doc_dir = Path("media/transactions") / str(data["company"].id)
+    doc_dir.mkdir(parents=True, exist_ok=True)
+    doc_name = f"central-access-{no_branch_user.id}.pdf"
+    doc_path = doc_dir / doc_name
+    doc_path.write_bytes(b"%PDF-1.4\n")
+
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        branch_id=source_branch.id,
+        document_url=f"transactions/{data['company'].id}/{doc_name}"
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(
+        quantity=1,
+        item_id=item.id,
+        transaction_id=transaction.id
+    ))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.COMPLETED,
+        transaction_id=transaction.id,
+        performed_by=data["users"]["admin"].id
+    ))
+    db_session.commit()
+
+    token = build_token(no_branch_user)
+
+    response = await client.get(
+        f"/api/v1/transactions/{transaction.id}/document",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/pdf")

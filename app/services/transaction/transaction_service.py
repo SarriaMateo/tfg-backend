@@ -509,6 +509,31 @@ class TransactionService:
             )
 
     @staticmethod
+    def _validate_update_permission(
+        db: Session,
+        transaction: Transaction,
+        current_user: User
+    ) -> None:
+        """
+        Validate update permissions for PUT /transactions/{transaction_id}.
+
+        Rules:
+        - PENDING: users from origin branch and users without branch association.
+        - TRANSIT/CANCELLED/COMPLETED: no user can update.
+        """
+        if transaction.status != TransactionStatus.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="TRANSACTION_UPDATE_FORBIDDEN"
+            )
+
+        TransactionService._validate_user_can_access_branch(
+            current_user,
+            transaction.branch_id,
+            db
+        )
+
+    @staticmethod
     def _validate_document_permission(db: Session, transaction: Transaction, current_user: User) -> None:
         """
         Validate document upload/delete permissions.
@@ -766,14 +791,13 @@ class TransactionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="TRANSACTION_NOT_FOUND"
             )
-        
-        # Validate access
-        TransactionService._validate_user_can_access_branch(
-            current_user, transaction.branch_id, db
+
+        # Validate update permissions by status and branch scope
+        TransactionService._validate_update_permission(
+            db=db,
+            transaction=transaction,
+            current_user=current_user
         )
-        
-        # Validate editable
-        TransactionService._validate_transaction_editable(transaction)
         
         # Track changes for metadata
         changes = {}
