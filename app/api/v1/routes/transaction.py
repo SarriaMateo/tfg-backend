@@ -257,7 +257,7 @@ async def upload_document(
     Maximum size: 10MB
     """
     document_file = await document.read()
-    document_filename = document.filename
+    document_filename = document.filename or "unknown"
     
     transaction = TransactionService.upload_document(
         db, transaction_id, current_user, document_file, document_filename
@@ -278,16 +278,10 @@ def get_document(
     Get the document file for a transaction.
     Returns the document file if it exists, 404 otherwise.
     """
-    import mimetypes
-    
-    document_path = TransactionService.get_document(db, transaction_id, current_user)
-    
-    # Determine media type from file extension
-    media_type, _ = mimetypes.guess_type(str(document_path))
-    if not media_type:
-        media_type = "application/octet-stream"
-    
-    return FileResponse(path=document_path, media_type=media_type)
+    document_path, media_type, download_name = TransactionService.get_document(
+        db, transaction_id, current_user
+    )
+    return FileResponse(path=document_path, media_type=media_type, filename=download_name)
 
 
 @router.delete(

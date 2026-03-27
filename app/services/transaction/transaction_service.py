@@ -1125,6 +1125,7 @@ class TransactionService:
         )
         
         transaction.document_url = document_url
+        transaction.document_name = document_filename
         TransactionRepository.update(db, transaction)
         TransactionRepository.commit(db)
         
@@ -1135,9 +1136,9 @@ class TransactionService:
         db: Session,
         transaction_id: int,
         current_user: User
-    ) -> Path:
+    ) -> tuple[Path, str, str]:
         """
-        Get the document file path for a transaction.
+        Get the document file path and metadata for a transaction.
         Similar to ItemService.get_item_image.
         """
         UserService.validate_user_active(current_user)
@@ -1167,7 +1168,18 @@ class TransactionService:
                 detail="DOCUMENT_NOT_FOUND"
             )
         
-        return file_path
+        import mimetypes
+        media_type, _ = mimetypes.guess_type(str(file_path))
+        if not media_type:
+            media_type = "application/octet-stream"
+
+        if transaction.document_name:
+            download_name = transaction.document_name
+        else:
+            extension = file_path.suffix.lower()
+            download_name = f"unknown{extension}" if extension else "unknown"
+
+        return file_path, media_type, download_name
 
     @staticmethod
     def delete_document(
@@ -1195,6 +1207,7 @@ class TransactionService:
         if transaction.document_url:
             TransactionDocumentHandler.delete_document(transaction.document_url)
             transaction.document_url = None
+            transaction.document_name = None
             TransactionRepository.update(db, transaction)
             TransactionRepository.commit(db)
         

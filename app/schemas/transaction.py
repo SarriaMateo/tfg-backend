@@ -50,7 +50,7 @@ class TransactionResponse(BaseModel):
     status: TransactionStatus
     created_at: datetime
     description: Optional[str]
-    document_url: Optional[str] = None
+    has_document: bool
     branch_id: int
     destination_branch_id: Optional[int]
     lines: List[TransactionLineResponse]
@@ -66,7 +66,7 @@ class TransactionDetailResponse(BaseModel):
     status: TransactionStatus
     created_at: datetime
     description: Optional[str]
-    document_url: Optional[str] = None
+    has_document: bool
     branch_id: int
     destination_branch_id: Optional[int]
     lines: List[TransactionLineResponse]

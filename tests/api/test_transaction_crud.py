@@ -159,7 +159,8 @@ async def test_create_transaction_in_success(client, company_with_transactions_d
     assert result["branch_id"] == branch.id
     assert len(result["lines"]) == 2
     assert result["description"] == "Initial stock entry"
-    assert "has_document" not in result
+    assert result["has_document"] is False
+    assert "document_url" not in result
 
 
 @pytest.mark.asyncio
@@ -2141,7 +2142,8 @@ async def test_list_transactions_filter_by_date_range(
     result = response.json()
     assert result["total"] == 1
     assert result["data"][0]["id"] == tx_in_range.id
-    assert "has_document" not in result["data"][0]
+    assert result["data"][0]["has_document"] is False
+    assert "document_url" not in result["data"][0]
 
 
 # =============================================================================
@@ -2188,7 +2190,8 @@ async def test_employee_can_upload_document_on_pending_transaction_not_created_b
 
     assert response.status_code == 200
     result = response.json()
-    assert result["document_url"] is not None
+    assert result["has_document"] is True
+    assert "document_url" not in result
 
 
 @pytest.mark.asyncio
@@ -2230,7 +2233,8 @@ async def test_employee_can_upload_document_on_completed_transaction_created_by_
 
     assert response.status_code == 200
     result = response.json()
-    assert result["document_url"] is not None
+    assert result["has_document"] is True
+    assert "document_url" not in result
 
 
 @pytest.mark.asyncio
@@ -2314,7 +2318,8 @@ async def test_employee_can_delete_document_on_cancelled_transaction_created_by_
 
     assert response.status_code == 200
     result = response.json()
-    assert result["document_url"] is None
+    assert result["has_document"] is False
+    assert "document_url" not in result
 
 
 @pytest.mark.asyncio
@@ -2349,7 +2354,8 @@ async def test_destination_branch_user_can_get_document(
         status=TransactionStatus.TRANSIT,
         branch_id=source_branch.id,
         destination_branch_id=destination_branch.id,
-        document_url=f"transactions/{data['company'].id}/{doc_name}"
+        document_url=f"transactions/{data['company'].id}/{doc_name}",
+        document_name="albaran-destino.pdf"
     )
     db_session.add(transaction)
     db_session.flush()
@@ -2375,6 +2381,8 @@ async def test_destination_branch_user_can_get_document(
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/pdf")
+    content_disposition = response.headers.get("content-disposition", "")
+    assert 'filename="albaran-destino.pdf"' in content_disposition
 
 
 @pytest.mark.asyncio
@@ -2422,3 +2430,5 @@ async def test_user_without_branch_can_get_document(
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/pdf")
+    content_disposition = response.headers.get("content-disposition", "")
+    assert 'filename="unknown.pdf"' in content_disposition

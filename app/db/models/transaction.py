@@ -46,6 +46,7 @@ class Transaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     document_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    document_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     branch_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("branches.id"),
@@ -77,3 +78,7 @@ class Transaction(Base):
         back_populates="transaction",
         cascade="all, delete-orphan"
     )
+
+    @property
+    def has_document(self) -> bool:
+        return bool(self.document_url)
