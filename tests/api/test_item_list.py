@@ -382,7 +382,7 @@ async def test_get_item_image_uses_unknown_when_image_name_missing(
 
     assert response.status_code == 200
     content_disposition = response.headers.get("content-disposition", "")
-    assert 'filename="unknown"' in content_disposition
+    assert 'filename="unknown.png"' in content_disposition
 
 
 @pytest.mark.asyncio

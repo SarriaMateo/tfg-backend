@@ -329,7 +329,11 @@ class ItemService:
         if not media_type:
             media_type = "application/octet-stream"
         
-        download_name = item.image_name or "unknown"
+        if item.image_name:
+            download_name = item.image_name
+        else:
+            extension = image_path.suffix.lower()
+            download_name = f"unknown{extension}" if extension else "unknown"
 
         return image_path, media_type, download_name
 
