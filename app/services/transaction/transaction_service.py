@@ -92,8 +92,8 @@ class TransactionService:
         return value.strftime("%d/%m/%Y %H:%M")
 
     @staticmethod
-    def _get_created_by_username(transaction: Transaction, user_map: dict[int, User]) -> str:
-        """Resolve username from CREATED transaction event."""
+    def _get_created_by_name(transaction: Transaction, user_map: dict[int, User]) -> str:
+        """Resolve display name from CREATED transaction event."""
         created_events = [event for event in transaction.events if event.action_type == ActionType.CREATED]
         if not created_events:
             return "-"
@@ -102,7 +102,7 @@ class TransactionService:
         creator = user_map.get(created_event.performed_by)
         if not creator:
             return "-"
-        return creator.username
+        return creator.name
 
     @staticmethod
     def _build_export_filename(now: Optional[datetime] = None) -> str:
@@ -120,7 +120,7 @@ class TransactionService:
         for transaction in transactions:
             origin_branch = transaction.branch.name if transaction.branch else "-"
             destination_branch = transaction.destination_branch.name if transaction.destination_branch else "-"
-            created_by = TransactionService._get_created_by_username(transaction, user_map)
+            created_by = TransactionService._get_created_by_name(transaction, user_map)
             operation_label = TransactionService.OPERATION_TYPE_LABELS.get(transaction.operation_type, "-")
             status_label = TransactionService.STATUS_LABELS.get(transaction.status, "-")
             created_at_label = TransactionService._format_datetime_for_export(transaction.created_at)

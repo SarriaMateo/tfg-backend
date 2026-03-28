@@ -261,6 +261,6 @@ async def test_export_contract_contains_spanish_labels_and_formatted_values(clie
     assert all_types == {"Entrada", "Salida", "Traspaso"}
     assert all_statuses == {"Pendiente", "En tránsito"}
     assert all_units == {"ud"}
-    assert all_creators == {"admin_export", "manager_export"}
+    assert all_creators == {"Admin Export", "Manager Export"}
     assert all("/" in row["Fecha y hora"] and ":" in row["Fecha y hora"] for row in rows)
     assert all(row["Cantidad"] in {"1", "2", "3"} for row in rows)
