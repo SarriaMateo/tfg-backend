@@ -337,3 +337,54 @@ async def test_export_contract_orders_by_total_items_desc(client, export_contrac
     # The first transaction in this ordering is TRANSFER with two lines.
     assert rows[0]["Tipo"] == "Traspaso"
     assert rows[1]["Tipo"] == "Traspaso"
+
+
+@pytest.mark.asyncio
+async def test_export_contract_rejects_export_exceeding_line_limit(client, db_session, export_contract_data):
+    admin = export_contract_data["users"]["admin"]
+    branch_a = export_contract_data["branches"]["a"]
+    company = export_contract_data["branches"]["a"].company
+    item = (
+        db_session.query(Item)
+        .filter(Item.company_id == company.id)
+        .first()
+    )
+    token = _token_for(admin)
+
+    # Generate a transaction with 50001 lines to exceed the limit
+    big_transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        created_at=datetime.utcnow(),
+        description="Bulk transaction",
+        branch_id=branch_a.id,
+    )
+    db_session.add(big_transaction)
+    db_session.flush()
+
+    # Add 50001 lines to exceed EXPORT_MAX_LINES (50000)
+    for i in range(50001):
+        db_session.add(
+            TransactionLine(
+                quantity=Decimal("1.000"),
+                item_id=item.id,
+                transaction_id=big_transaction.id,
+            )
+        )
+    db_session.add(
+        TransactionEvent(
+            action_type=ActionType.CREATED,
+            timestamp=datetime.utcnow(),
+            transaction_id=big_transaction.id,
+            performed_by=admin.id,
+        )
+    )
+    db_session.commit()
+
+    response = await client.get(
+        "/api/v1/transactions/export?format=csv",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert "EXPORT_EXCEEDS_LIMIT_50000" in response.json()["detail"]

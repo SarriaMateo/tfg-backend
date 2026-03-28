@@ -27,6 +27,9 @@ from app.services.user.user_service import UserService
 class TransactionService:
     """Business logic service for transactions."""
 
+    # Export constraints
+    EXPORT_MAX_LINES = 50000
+
     OPERATION_TYPE_LABELS = {
         OperationType.IN: "Entrada",
         OperationType.OUT: "Salida",
@@ -1259,6 +1262,14 @@ class TransactionService:
             order_by=order_by,
             order_desc=order_desc,
         )
+
+        # Count total lines to validate export limit
+        total_lines = sum(len(transaction.lines) for transaction in transactions)
+        if total_lines > TransactionService.EXPORT_MAX_LINES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"EXPORT_EXCEEDS_LIMIT_{TransactionService.EXPORT_MAX_LINES}"
+            )
 
         created_by_ids = {
             event.performed_by
