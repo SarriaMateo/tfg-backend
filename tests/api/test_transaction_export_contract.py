@@ -259,6 +259,7 @@ async def test_export_contract_contains_spanish_labels_and_formatted_values(clie
 
     first_row = rows[0]
     assert set(first_row.keys()) == {
+        "Id",
         "Tipo",
         "Sede",
         "Sede destino",
@@ -276,6 +277,7 @@ async def test_export_contract_contains_spanish_labels_and_formatted_values(clie
     all_units = {row["Unidad"] for row in rows}
     all_creators = {row["Creada por"] for row in rows}
     all_quantities = {row["Cantidad"] for row in rows}
+    all_ids = {row["Id"] for row in rows}
 
     assert all_types == {"Entrada", "Salida", "Traspaso"}
     assert all_statuses == {"Pendiente", "En tránsito"}
@@ -283,6 +285,7 @@ async def test_export_contract_contains_spanish_labels_and_formatted_values(clie
     assert all_creators == {"Admin Export", "Manager Export"}
     assert all("/" in row["Fecha y hora"] and ":" in row["Fecha y hora"] for row in rows)
     assert all_quantities == {"1", "2", "3", "5.5"}
+    assert all(id_val.isdigit() for id_val in all_ids)
 
 
 @pytest.mark.asyncio

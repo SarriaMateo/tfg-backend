@@ -54,6 +54,7 @@ class TransactionService:
     }
 
     CSV_HEADERS = [
+        "Id",
         "Tipo",
         "Sede",
         "Sede destino",
@@ -132,6 +133,7 @@ class TransactionService:
                 quantity_label = TransactionService._format_decimal_for_export(line.quantity)
 
                 writer.writerow([
+                    transaction.id,
                     operation_label,
                     origin_branch,
                     destination_branch,
