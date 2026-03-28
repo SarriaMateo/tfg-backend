@@ -110,7 +110,7 @@ def export_transactions(
     end_date: Optional[date] = Query(None),
     search: Optional[str] = Query(None),
     order_by: Literal["created_at", "total_items"] = Query("created_at"),
-    order_desc: bool = Query(True),
+    order_desc: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):

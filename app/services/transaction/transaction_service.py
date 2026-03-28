@@ -88,7 +88,9 @@ class TransactionService:
         """
         rounded = round(float(value), 3)
         formatted = f"{rounded:.3f}".rstrip("0").rstrip(".")
-        return formatted or "0"
+        if not formatted:
+            return "0"
+        return formatted.replace(".", ",")
 
     @staticmethod
     def _format_datetime_for_export(value: datetime) -> str:

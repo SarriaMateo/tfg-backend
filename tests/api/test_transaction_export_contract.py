@@ -284,7 +284,7 @@ async def test_export_contract_contains_spanish_labels_and_formatted_values(clie
     assert all_units == {"ud", "kg"}
     assert all_creators == {"Admin Export", "Manager Export"}
     assert all("/" in row["Fecha y hora"] and ":" in row["Fecha y hora"] for row in rows)
-    assert all_quantities == {"1", "2", "3", "5.5"}
+    assert all_quantities == {"1", "2", "3", "5,5"}
     assert all(id_val.isdigit() for id_val in all_ids)
 
 
