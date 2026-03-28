@@ -25,6 +25,15 @@ class TransactionService:
     """Business logic service for transactions."""
 
     @staticmethod
+    def _validate_export_permission(current_user: User) -> None:
+        """Only ADMIN and MANAGER users can export transactions."""
+        if current_user.role not in (Role.ADMIN, Role.MANAGER):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="INSUFFICIENT_ROLE"
+            )
+
+    @staticmethod
     def _complete_transaction_in_place(
         db: Session,
         transaction: Transaction,
@@ -1089,6 +1098,59 @@ class TransactionService:
         )
         
         return transactions, total
+
+    @staticmethod
+    def export_transactions_preview(
+        db: Session,
+        current_user: User,
+        export_format: str,
+        branch_id: Optional[int] = None,
+        operation_type: Optional[OperationType] = None,
+        status_filter: Optional[TransactionStatus] = None,
+        performed_by: Optional[int] = None,
+        item_id: Optional[int] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        search: Optional[str] = None,
+        order_by: str = "created_at",
+        order_desc: bool = True
+    ) -> dict:
+        """
+        Temporary export contract response for CSV endpoint validation.
+        """
+        UserService.validate_user_active(current_user)
+        TransactionService._validate_export_permission(current_user)
+
+        if export_format != "csv":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="EXPORT_FORMAT_NOT_SUPPORTED"
+            )
+
+        if current_user.branch_id:
+            branch_id = current_user.branch_id
+
+        transactions = TransactionRepository.list_transactions_for_export(
+            db=db,
+            company_id=current_user.company_id,
+            branch_id=branch_id,
+            operation_type=operation_type,
+            status=status_filter,
+            performed_by=performed_by,
+            item_id=item_id,
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+            order_by=order_by,
+            order_desc=order_desc,
+        )
+
+        return {
+            "format": export_format,
+            "total_matches": len(transactions),
+            "transaction_ids": [transaction.id for transaction in transactions],
+            "message": "EXPORT_CONTRACT_READY"
+        }
 
     @staticmethod
     def upload_document(

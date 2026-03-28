@@ -13,6 +13,90 @@ class TransactionRepository:
     """Repository for transaction management"""
 
     @staticmethod
+    def list_transactions_for_export(
+        db: Session,
+        company_id: int,
+        branch_id: Optional[int] = None,
+        operation_type: Optional[OperationType] = None,
+        status: Optional[TransactionStatus] = None,
+        performed_by: Optional[int] = None,
+        item_id: Optional[int] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        search: Optional[str] = None,
+        order_by: str = "created_at",
+        order_desc: bool = True
+    ) -> List[Transaction]:
+        """
+        List all transactions for export using the same filters/search/sort as listing.
+        This method does not apply pagination.
+        """
+        query = db.query(Transaction).join(
+            Branch, Transaction.branch_id == Branch.id
+        ).filter(
+            Branch.company_id == company_id
+        )
+
+        if branch_id is not None:
+            query = query.filter(
+                or_(
+                    Transaction.branch_id == branch_id,
+                    Transaction.destination_branch_id == branch_id
+                )
+            )
+
+        if operation_type is not None:
+            query = query.filter(Transaction.operation_type == operation_type)
+
+        if status is not None:
+            query = query.filter(Transaction.status == status)
+
+        if performed_by is not None:
+            query = query.join(TransactionEvent).filter(
+                TransactionEvent.performed_by == performed_by
+            )
+
+        if item_id is not None:
+            query = query.join(TransactionLine).filter(
+                TransactionLine.item_id == item_id
+            )
+
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.join(TransactionLine).join(Item).filter(
+                or_(
+                    Item.name.ilike(search_pattern),
+                    Item.sku.ilike(search_pattern)
+                )
+            )
+
+        if start_date is not None:
+            start_datetime = datetime.combine(start_date, time.min)
+            query = query.filter(Transaction.created_at >= start_datetime)
+
+        if end_date is not None:
+            end_datetime = datetime.combine(end_date, time.max)
+            query = query.filter(Transaction.created_at <= end_datetime)
+
+        query = query.distinct()
+
+        if order_by == "total_items":
+            query = query.outerjoin(TransactionLine).group_by(Transaction.id)
+            order_column = func.count(TransactionLine.id)
+        else:
+            order_column = Transaction.created_at
+
+        if order_desc:
+            query = query.order_by(order_column.desc() if order_by != "total_items" else desc(order_column))
+        else:
+            query = query.order_by(order_column.asc() if order_by != "total_items" else asc(order_column))
+
+        return query.options(
+            joinedload(Transaction.lines),
+            joinedload(Transaction.events)
+        ).all()
+
+    @staticmethod
     def get_by_id(db: Session, transaction_id: int) -> Optional[Transaction]:
         """Get transaction by ID with eager loading of related data"""
         return db.query(Transaction).filter(

@@ -94,6 +94,46 @@ def list_transactions(
     )
 
 
+@router.get(
+    "/export",
+    status_code=status.HTTP_200_OK
+)
+def export_transactions(
+    export_format: Literal["csv", "pdf"] = Query("csv", alias="format"),
+    branch_id: Optional[int] = Query(None, ge=1),
+    operation_type: Optional[OperationType] = Query(None),
+    status: Optional[TransactionStatus] = Query(None),
+    performed_by: Optional[int] = Query(None, ge=1),
+    item_id: Optional[int] = Query(None, ge=1),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    search: Optional[str] = Query(None),
+    order_by: Literal["created_at", "total_items"] = Query("created_at"),
+    order_desc: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Export transactions using the same filters/search/sorting as listing.
+    Current stage returns a temporary contract response.
+    """
+    return TransactionService.export_transactions_preview(
+        db=db,
+        current_user=current_user,
+        export_format=export_format,
+        branch_id=branch_id,
+        operation_type=operation_type,
+        status_filter=status,
+        performed_by=performed_by,
+        item_id=item_id,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+        order_by=order_by,
+        order_desc=order_desc,
+    )
+
+
 @router.post(
     "",
     response_model=TransactionResponse,
