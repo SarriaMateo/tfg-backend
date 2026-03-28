@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, UploadFile, File, status, Query, Request
 from starlette.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import Optional, Literal, List
 from decimal import Decimal
@@ -115,9 +116,8 @@ def export_transactions(
 ):
     """
     Export transactions using the same filters/search/sorting as listing.
-    Current stage returns a temporary contract response.
     """
-    return TransactionService.export_transactions_preview(
+    csv_bytes, filename = TransactionService.export_transactions_csv(
         db=db,
         current_user=current_user,
         export_format=export_format,
@@ -131,6 +131,14 @@ def export_transactions(
         search=search,
         order_by=order_by,
         order_desc=order_desc,
+    )
+
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
     )
 
 

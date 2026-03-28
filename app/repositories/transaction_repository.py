@@ -92,8 +92,10 @@ class TransactionRepository:
             query = query.order_by(order_column.asc() if order_by != "total_items" else asc(order_column))
 
         return query.options(
-            joinedload(Transaction.lines),
-            joinedload(Transaction.events)
+            joinedload(Transaction.lines).joinedload(TransactionLine.item),
+            joinedload(Transaction.events),
+            joinedload(Transaction.branch),
+            joinedload(Transaction.destination_branch)
         ).all()
 
     @staticmethod

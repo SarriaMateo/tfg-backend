@@ -1,6 +1,8 @@
 import pytest
 from datetime import datetime
 from decimal import Decimal
+import csv
+import io
 
 from app.core.security import create_access_token, hash_password
 from app.db.models.branch import Branch
@@ -8,6 +10,7 @@ from app.db.models.company import Company
 from app.db.models.item import Item, Unit
 from app.db.models.transaction import OperationType, Transaction, TransactionStatus
 from app.db.models.transaction_line import TransactionLine
+from app.db.models.transaction_event import TransactionEvent, ActionType
 from app.db.models.user import Role, User
 
 
@@ -93,6 +96,29 @@ def export_contract_data(db_session):
 
     db_session.add_all(
         [
+            TransactionEvent(
+                action_type=ActionType.CREATED,
+                timestamp=datetime.utcnow(),
+                transaction_id=transaction_branch_a.id,
+                performed_by=admin.id,
+            ),
+            TransactionEvent(
+                action_type=ActionType.CREATED,
+                timestamp=datetime.utcnow(),
+                transaction_id=transaction_branch_b.id,
+                performed_by=admin.id,
+            ),
+            TransactionEvent(
+                action_type=ActionType.CREATED,
+                timestamp=datetime.utcnow(),
+                transaction_id=transaction_to_branch_a.id,
+                performed_by=manager_branch_a.id,
+            ),
+        ]
+    )
+
+    db_session.add_all(
+        [
             TransactionLine(quantity=Decimal("1.000"), item_id=item.id, transaction_id=transaction_branch_a.id),
             TransactionLine(quantity=Decimal("2.000"), item_id=item.id, transaction_id=transaction_branch_b.id),
             TransactionLine(quantity=Decimal("3.000"), item_id=item.id, transaction_id=transaction_to_branch_a.id),
@@ -130,6 +156,12 @@ def _token_for(user: User) -> str:
     )
 
 
+def _read_csv(response) -> list[dict[str, str]]:
+    text = response.content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text), delimiter=";")
+    return list(reader)
+
+
 @pytest.mark.asyncio
 async def test_export_contract_allows_admin(client, export_contract_data):
     admin = export_contract_data["users"]["admin"]
@@ -141,10 +173,11 @@ async def test_export_contract_allows_admin(client, export_contract_data):
     )
 
     assert response.status_code == 200
-    payload = response.json()
-    assert payload["format"] == "csv"
-    assert payload["message"] == "EXPORT_CONTRACT_READY"
-    assert payload["total_matches"] == 3
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment; filename=\"operaciones_" in response.headers["content-disposition"]
+    rows = _read_csv(response)
+    # Three transactions with one line each -> three CSV rows.
+    assert len(rows) == 3
 
 
 @pytest.mark.asyncio
@@ -179,9 +212,6 @@ async def test_export_contract_rejects_pdf_for_now(client, export_contract_data)
 async def test_export_contract_manager_branch_scope_overrides_filter(client, export_contract_data):
     manager = export_contract_data["users"]["manager"]
     branch_b = export_contract_data["branches"]["b"]
-    tx_branch_a = export_contract_data["transactions"]["a"]
-    tx_to_branch_a = export_contract_data["transactions"]["to_a"]
-
     token = _token_for(manager)
 
     response = await client.get(
@@ -190,6 +220,47 @@ async def test_export_contract_manager_branch_scope_overrides_filter(client, exp
     )
 
     assert response.status_code == 200
-    payload = response.json()
-    assert payload["total_matches"] == 2
-    assert set(payload["transaction_ids"]) == {tx_branch_a.id, tx_to_branch_a.id}
+    rows = _read_csv(response)
+    assert len(rows) == 2
+    assert {row["Sede"] for row in rows} == {"Sede A", "Sede B"}
+    assert {row["Sede destino"] for row in rows} == {"-", "Sede A"}
+
+
+@pytest.mark.asyncio
+async def test_export_contract_contains_spanish_labels_and_formatted_values(client, export_contract_data):
+    admin = export_contract_data["users"]["admin"]
+    token = _token_for(admin)
+
+    response = await client.get(
+        "/api/v1/transactions/export?format=csv",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    rows = _read_csv(response)
+
+    first_row = rows[0]
+    assert set(first_row.keys()) == {
+        "Tipo",
+        "Sede",
+        "Sede destino",
+        "Fecha y hora",
+        "Descripción",
+        "Estado",
+        "Creada por",
+        "Artículo",
+        "Cantidad",
+        "Unidad",
+    }
+
+    all_types = {row["Tipo"] for row in rows}
+    all_statuses = {row["Estado"] for row in rows}
+    all_units = {row["Unidad"] for row in rows}
+    all_creators = {row["Creada por"] for row in rows}
+
+    assert all_types == {"Entrada", "Salida", "Traspaso"}
+    assert all_statuses == {"Pendiente", "En tránsito"}
+    assert all_units == {"ud"}
+    assert all_creators == {"admin_export", "manager_export"}
+    assert all("/" in row["Fecha y hora"] and ":" in row["Fecha y hora"] for row in rows)
+    assert all(row["Cantidad"] in {"1", "2", "3"} for row in rows)

@@ -4,6 +4,8 @@ from typing import Optional, List, Tuple
 from pathlib import Path
 from datetime import datetime, date
 from decimal import Decimal
+import csv
+import io
 
 from app.db.models.transaction import Transaction, OperationType, TransactionStatus
 from app.db.models.transaction_line import TransactionLine
@@ -11,6 +13,7 @@ from app.db.models.transaction_event import TransactionEvent, ActionType
 from app.db.models.stock_movement import StockMovement, MovementType
 from app.db.models.user import User, Role
 from app.db.models.item import Item, Unit
+from app.repositories.user_repository import UserRepository
 from app.repositories.transaction_repository import TransactionRepository
 from app.repositories.item_repository import ItemRepository
 from app.repositories.branch_repository import BranchRepository
@@ -24,6 +27,45 @@ from app.services.user.user_service import UserService
 class TransactionService:
     """Business logic service for transactions."""
 
+    OPERATION_TYPE_LABELS = {
+        OperationType.IN: "Entrada",
+        OperationType.OUT: "Salida",
+        OperationType.TRANSFER: "Traspaso",
+        OperationType.ADJUSTMENT: "Ajuste",
+    }
+
+    STATUS_LABELS = {
+        TransactionStatus.PENDING: "Pendiente",
+        TransactionStatus.TRANSIT: "En tránsito",
+        TransactionStatus.COMPLETED: "Completada",
+        TransactionStatus.CANCELLED: "Cancelada",
+    }
+
+    UNIT_SHORT_LABELS = {
+        Unit.UNIT: "ud",
+        Unit.KILOGRAM: "kg",
+        Unit.GRAM: "g",
+        Unit.LITER: "L",
+        Unit.MILLILITER: "mL",
+        Unit.METER: "m",
+        Unit.SQ_METER: "m²",
+        Unit.BOX: "caja",
+        Unit.PACK: "pack",
+    }
+
+    CSV_HEADERS = [
+        "Tipo",
+        "Sede",
+        "Sede destino",
+        "Fecha y hora",
+        "Descripción",
+        "Estado",
+        "Creada por",
+        "Artículo",
+        "Cantidad",
+        "Unidad",
+    ]
+
     @staticmethod
     def _validate_export_permission(current_user: User) -> None:
         """Only ADMIN and MANAGER users can export transactions."""
@@ -32,6 +74,77 @@ class TransactionService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="INSUFFICIENT_ROLE"
             )
+
+    @staticmethod
+    def _format_decimal_for_export(value: Decimal) -> str:
+        """
+        Match frontend decimal formatting:
+        - Round to 3 decimals
+        - Strip trailing zeros and decimal separator when possible
+        """
+        rounded = round(float(value), 3)
+        formatted = f"{rounded:.3f}".rstrip("0").rstrip(".")
+        return formatted or "0"
+
+    @staticmethod
+    def _format_datetime_for_export(value: datetime) -> str:
+        """Format datetime using Spanish-friendly presentation."""
+        return value.strftime("%d/%m/%Y %H:%M")
+
+    @staticmethod
+    def _get_created_by_username(transaction: Transaction, user_map: dict[int, User]) -> str:
+        """Resolve username from CREATED transaction event."""
+        created_events = [event for event in transaction.events if event.action_type == ActionType.CREATED]
+        if not created_events:
+            return "-"
+
+        created_event = min(created_events, key=lambda event: event.timestamp)
+        creator = user_map.get(created_event.performed_by)
+        if not creator:
+            return "-"
+        return creator.username
+
+    @staticmethod
+    def _build_export_filename(now: Optional[datetime] = None) -> str:
+        """Build export filename using requested naming convention."""
+        current = now or datetime.utcnow()
+        return f"operaciones_{current.strftime('%Y%m%d_%H%M')}.csv"
+
+    @staticmethod
+    def _build_transactions_csv_bytes(transactions: List[Transaction], user_map: dict[int, User]) -> bytes:
+        """Build CSV content for transactions export with one row per line."""
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=";", lineterminator="\n")
+        writer.writerow(TransactionService.CSV_HEADERS)
+
+        for transaction in transactions:
+            origin_branch = transaction.branch.name if transaction.branch else "-"
+            destination_branch = transaction.destination_branch.name if transaction.destination_branch else "-"
+            created_by = TransactionService._get_created_by_username(transaction, user_map)
+            operation_label = TransactionService.OPERATION_TYPE_LABELS.get(transaction.operation_type, "-")
+            status_label = TransactionService.STATUS_LABELS.get(transaction.status, "-")
+            created_at_label = TransactionService._format_datetime_for_export(transaction.created_at)
+            description = transaction.description or ""
+
+            for line in transaction.lines:
+                item_name = line.item.name if line.item else "-"
+                unit_label = TransactionService.UNIT_SHORT_LABELS.get(line.item.unit, "-") if line.item else "-"
+                quantity_label = TransactionService._format_decimal_for_export(line.quantity)
+
+                writer.writerow([
+                    operation_label,
+                    origin_branch,
+                    destination_branch,
+                    created_at_label,
+                    description,
+                    status_label,
+                    created_by,
+                    item_name,
+                    quantity_label,
+                    unit_label,
+                ])
+
+        return output.getvalue().encode("utf-8-sig")
 
     @staticmethod
     def _complete_transaction_in_place(
@@ -1100,7 +1213,7 @@ class TransactionService:
         return transactions, total
 
     @staticmethod
-    def export_transactions_preview(
+    def export_transactions_csv(
         db: Session,
         current_user: User,
         export_format: str,
@@ -1114,9 +1227,9 @@ class TransactionService:
         search: Optional[str] = None,
         order_by: str = "created_at",
         order_desc: bool = True
-    ) -> dict:
+    ) -> tuple[bytes, str]:
         """
-        Temporary export contract response for CSV endpoint validation.
+        Export transactions as CSV bytes and filename.
         """
         UserService.validate_user_active(current_user)
         TransactionService._validate_export_permission(current_user)
@@ -1145,12 +1258,19 @@ class TransactionService:
             order_desc=order_desc,
         )
 
-        return {
-            "format": export_format,
-            "total_matches": len(transactions),
-            "transaction_ids": [transaction.id for transaction in transactions],
-            "message": "EXPORT_CONTRACT_READY"
+        created_by_ids = {
+            event.performed_by
+            for transaction in transactions
+            for event in transaction.events
+            if event.action_type == ActionType.CREATED
         }
+
+        users = [UserRepository.get_by_id(db, user_id) for user_id in created_by_ids]
+        user_map = {user.id: user for user in users if user is not None}
+
+        csv_bytes = TransactionService._build_transactions_csv_bytes(transactions, user_map)
+        filename = TransactionService._build_export_filename()
+        return csv_bytes, filename
 
     @staticmethod
     def upload_document(
