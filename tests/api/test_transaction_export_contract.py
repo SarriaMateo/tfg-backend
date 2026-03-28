@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 import csv
 import io
@@ -36,8 +36,17 @@ def export_contract_data(db_session):
         is_active=True,
         company_id=company.id,
     )
-    db_session.add(item)
+    item_kg = Item(
+        name="Harina Export",
+        sku="EXP-002",
+        unit=Unit.KILOGRAM,
+        is_active=True,
+        company_id=company.id,
+    )
+    db_session.add_all([item, item_kg])
     db_session.flush()
+
+    now = datetime.utcnow()
 
     admin = User(
         name="Admin Export",
@@ -72,21 +81,21 @@ def export_contract_data(db_session):
     transaction_branch_a = Transaction(
         operation_type=OperationType.IN,
         status=TransactionStatus.PENDING,
-        created_at=datetime.utcnow(),
+        created_at=now - timedelta(days=2),
         description="Entrada sede A",
         branch_id=branch_a.id,
     )
     transaction_branch_b = Transaction(
         operation_type=OperationType.OUT,
         status=TransactionStatus.PENDING,
-        created_at=datetime.utcnow(),
+        created_at=now - timedelta(days=1),
         description="Salida sede B",
         branch_id=branch_b.id,
     )
     transaction_to_branch_a = Transaction(
         operation_type=OperationType.TRANSFER,
         status=TransactionStatus.TRANSIT,
-        created_at=datetime.utcnow(),
+        created_at=now,
         description="Traspaso hacia sede A",
         branch_id=branch_b.id,
         destination_branch_id=branch_a.id,
@@ -98,19 +107,19 @@ def export_contract_data(db_session):
         [
             TransactionEvent(
                 action_type=ActionType.CREATED,
-                timestamp=datetime.utcnow(),
+                timestamp=now - timedelta(days=2),
                 transaction_id=transaction_branch_a.id,
                 performed_by=admin.id,
             ),
             TransactionEvent(
                 action_type=ActionType.CREATED,
-                timestamp=datetime.utcnow(),
+                timestamp=now - timedelta(days=1),
                 transaction_id=transaction_branch_b.id,
                 performed_by=admin.id,
             ),
             TransactionEvent(
                 action_type=ActionType.CREATED,
-                timestamp=datetime.utcnow(),
+                timestamp=now,
                 transaction_id=transaction_to_branch_a.id,
                 performed_by=manager_branch_a.id,
             ),
@@ -122,6 +131,7 @@ def export_contract_data(db_session):
             TransactionLine(quantity=Decimal("1.000"), item_id=item.id, transaction_id=transaction_branch_a.id),
             TransactionLine(quantity=Decimal("2.000"), item_id=item.id, transaction_id=transaction_branch_b.id),
             TransactionLine(quantity=Decimal("3.000"), item_id=item.id, transaction_id=transaction_to_branch_a.id),
+            TransactionLine(quantity=Decimal("5.500"), item_id=item_kg.id, transaction_id=transaction_to_branch_a.id),
         ]
     )
     db_session.commit()
@@ -162,6 +172,14 @@ def _read_csv(response) -> list[dict[str, str]]:
     return list(reader)
 
 
+def _dates_for_fixture() -> tuple[str, str]:
+    now = datetime.utcnow()
+    return (
+        (now - timedelta(days=1, hours=1)).date().isoformat(),
+        now.date().isoformat(),
+    )
+
+
 @pytest.mark.asyncio
 async def test_export_contract_allows_admin(client, export_contract_data):
     admin = export_contract_data["users"]["admin"]
@@ -176,8 +194,8 @@ async def test_export_contract_allows_admin(client, export_contract_data):
     assert response.headers["content-type"].startswith("text/csv")
     assert "attachment; filename=\"operaciones_" in response.headers["content-disposition"]
     rows = _read_csv(response)
-    # Three transactions with one line each -> three CSV rows.
-    assert len(rows) == 3
+    # Three transactions and one of them has two lines -> four CSV rows.
+    assert len(rows) == 4
 
 
 @pytest.mark.asyncio
@@ -221,7 +239,7 @@ async def test_export_contract_manager_branch_scope_overrides_filter(client, exp
 
     assert response.status_code == 200
     rows = _read_csv(response)
-    assert len(rows) == 2
+    assert len(rows) == 3
     assert {row["Sede"] for row in rows} == {"Sede A", "Sede B"}
     assert {row["Sede destino"] for row in rows} == {"-", "Sede A"}
 
@@ -257,10 +275,62 @@ async def test_export_contract_contains_spanish_labels_and_formatted_values(clie
     all_statuses = {row["Estado"] for row in rows}
     all_units = {row["Unidad"] for row in rows}
     all_creators = {row["Creada por"] for row in rows}
+    all_quantities = {row["Cantidad"] for row in rows}
 
     assert all_types == {"Entrada", "Salida", "Traspaso"}
     assert all_statuses == {"Pendiente", "En tránsito"}
-    assert all_units == {"ud"}
+    assert all_units == {"ud", "kg"}
     assert all_creators == {"Admin Export", "Manager Export"}
     assert all("/" in row["Fecha y hora"] and ":" in row["Fecha y hora"] for row in rows)
-    assert all(row["Cantidad"] in {"1", "2", "3"} for row in rows)
+    assert all_quantities == {"1", "2", "3", "5.5"}
+
+
+@pytest.mark.asyncio
+async def test_export_contract_filters_by_search(client, export_contract_data):
+    admin = export_contract_data["users"]["admin"]
+    token = _token_for(admin)
+
+    response = await client.get(
+        "/api/v1/transactions/export?format=csv&search=Harina",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    rows = _read_csv(response)
+    assert len(rows) == 2
+    assert {row["Artículo"] for row in rows} == {"Articulo Export", "Harina Export"}
+
+
+@pytest.mark.asyncio
+async def test_export_contract_filters_by_date_range(client, export_contract_data):
+    admin = export_contract_data["users"]["admin"]
+    token = _token_for(admin)
+    start_date, end_date = _dates_for_fixture()
+
+    response = await client.get(
+        f"/api/v1/transactions/export?format=csv&start_date={start_date}&end_date={end_date}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    rows = _read_csv(response)
+    # Only transaction_branch_b (1 line) and transaction_to_branch_a (2 lines) fit this range.
+    assert len(rows) == 3
+    assert {row["Tipo"] for row in rows} == {"Salida", "Traspaso"}
+
+
+@pytest.mark.asyncio
+async def test_export_contract_orders_by_total_items_desc(client, export_contract_data):
+    admin = export_contract_data["users"]["admin"]
+    token = _token_for(admin)
+
+    response = await client.get(
+        "/api/v1/transactions/export?format=csv&order_by=total_items&order_desc=true",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    rows = _read_csv(response)
+    # The first transaction in this ordering is TRANSFER with two lines.
+    assert rows[0]["Tipo"] == "Traspaso"
+    assert rows[1]["Tipo"] == "Traspaso"
