@@ -91,16 +91,16 @@ def test_build_pdf_rows_html_merges_transaction_cells_with_rowspan():
     assert html_rows.count("<tr>") == 3
 
     # Transaction 101 has 2 lines so merged cells must use rowspan=2 exactly once per merged column.
-    assert html_rows.count('<td rowspan="2" class="pdf-cell-merged">101</td>') == 1
-    assert html_rows.count('<td rowspan="2" class="pdf-cell-merged">Sede A</td>') == 1
-    assert html_rows.count('<td rowspan="2" class="pdf-cell-merged">Sede B</td>') == 1
+    assert html_rows.count('<td rowspan="2" class="pdf-cell-merged pdf-group-odd">101</td>') == 1
+    assert html_rows.count('<td rowspan="2" class="pdf-cell-merged pdf-group-odd">Sede A</td>') == 1
+    assert html_rows.count('<td rowspan="2" class="pdf-cell-merged pdf-group-odd">Sede B</td>') == 1
 
     # Item-level cells must remain unmerged and appear once per line.
-    assert "<td>Harina</td>" in html_rows
-    assert "<td>Aceite</td>" in html_rows
-    assert "<td>Azúcar</td>" in html_rows
+    assert '<td class="pdf-line-cell pdf-line-odd">Harina</td>' in html_rows
+    assert '<td class="pdf-line-cell pdf-line-even">Aceite</td>' in html_rows
+    assert '<td class="pdf-line-cell pdf-line-odd">Azúcar</td>' in html_rows
 
     # Quantity formatting remains aligned with existing CSV/PDF formatting rules.
-    assert '<td class="pdf-col-qty">5,5</td>' in html_rows
-    assert '<td class="pdf-col-qty">2</td>' in html_rows
-    assert '<td class="pdf-col-qty">1</td>' in html_rows
+    assert '<td class="pdf-col-qty pdf-line-cell pdf-line-odd">5,5</td>' in html_rows
+    assert '<td class="pdf-col-qty pdf-line-cell pdf-line-even">2</td>' in html_rows
+    assert '<td class="pdf-col-qty pdf-line-cell pdf-line-odd">1</td>' in html_rows

@@ -203,18 +203,6 @@ body {
   border-bottom: 1px solid var(--pdf-border-strong);
 }
 
-.pdf-table tbody tr:nth-child(odd) {
-  background: #fcfdff;
-}
-
-.pdf-table tbody tr:nth-child(even) {
-  background: #f7faff;
-}
-
-.pdf-table tbody tr:hover {
-  background: #eef5ff;
-}
-
 .pdf-table tbody tr {
   page-break-inside: avoid;
 }
@@ -274,6 +262,22 @@ body {
 
 .pdf-cell-merged {
   vertical-align: middle;
+}
+
+.pdf-cell-merged.pdf-group-odd {
+  background: #fcfdff;
+}
+
+.pdf-cell-merged.pdf-group-even {
+  background: #f7faff;
+}
+
+.pdf-line-cell.pdf-line-odd {
+  background: #fcfdff;
+}
+
+.pdf-line-cell.pdf-line-even {
+  background: #f7faff;
 }
 
 .pdf-badge {

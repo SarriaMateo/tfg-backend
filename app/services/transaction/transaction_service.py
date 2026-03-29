@@ -135,7 +135,7 @@ class TransactionService:
         writer = csv.writer(output, delimiter=";", lineterminator="\n")
         writer.writerow(TransactionService.CSV_HEADERS)
 
-        for transaction in transactions:
+        for transaction_index, transaction in enumerate(transactions):
             origin_branch = transaction.branch.name if transaction.branch else "-"
             destination_branch = transaction.destination_branch.name if transaction.destination_branch else "-"
             created_by = TransactionService._get_created_by_name(transaction, user_map)
@@ -143,6 +143,7 @@ class TransactionService:
             status_label = TransactionService.STATUS_LABELS.get(transaction.status, "-")
             created_at_label = TransactionService._format_datetime_for_export(transaction.created_at)
             description = transaction.description or ""
+            group_class = "pdf-group-odd" if transaction_index % 2 == 0 else "pdf-group-even"
 
             for line in transaction.lines:
                 item_name = line.item.name if line.item else "-"
@@ -307,7 +308,7 @@ class TransactionService:
         """Build transaction rows HTML merging transaction-level columns with rowspan."""
         rows: List[str] = []
 
-        for transaction in transactions:
+        for transaction_index, transaction in enumerate(transactions):
             origin_branch = transaction.branch.name if transaction.branch else "-"
             destination_branch = transaction.destination_branch.name if transaction.destination_branch else "-"
             created_by = TransactionService._get_created_by_name(transaction, user_map)
@@ -315,6 +316,7 @@ class TransactionService:
             status_label = TransactionService.STATUS_LABELS.get(transaction.status, "-")
             created_at_label = TransactionService._format_datetime_for_export(transaction.created_at)
             description = transaction.description or ""
+            group_class = "pdf-group-odd" if transaction_index % 2 == 0 else "pdf-group-even"
 
             operation_class_map = {
                 OperationType.IN: "type-entrada",
@@ -334,6 +336,7 @@ class TransactionService:
             line_count = max(len(transaction.lines), 1)
             for index in range(line_count):
                 line = transaction.lines[index] if index < len(transaction.lines) else None
+                line_class = "pdf-line-odd" if index % 2 == 0 else "pdf-line-even"
                 item_name = line.item.name if line and line.item else "-"
                 unit_label = (
                     TransactionService.UNIT_SHORT_LABELS.get(line.item.unit, "-")
@@ -350,34 +353,34 @@ class TransactionService:
                 if index == 0:
                     row_cells.extend(
                         [
-                            f'<td rowspan="{line_count}" class="pdf-cell-merged">{transaction.id}</td>',
+                            f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">{transaction.id}</td>',
                             (
-                                f'<td rowspan="{line_count}" class="pdf-cell-merged">'
+                                f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">'
                                 f'<span class="pdf-badge {html_escape(operation_class)}">{html_escape(operation_label)}</span>'
                                 "</td>"
                             ),
-                            f'<td rowspan="{line_count}" class="pdf-cell-merged">{html_escape(origin_branch)}</td>',
-                            f'<td rowspan="{line_count}" class="pdf-cell-merged">{html_escape(destination_branch)}</td>',
-                            f'<td rowspan="{line_count}" class="pdf-cell-merged">{html_escape(created_at_label)}</td>',
+                            f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">{html_escape(origin_branch)}</td>',
+                            f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">{html_escape(destination_branch)}</td>',
+                            f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">{html_escape(created_at_label)}</td>',
                             (
-                                f'<td rowspan="{line_count}" class="pdf-cell-merged">'
+                                f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">'
                                 f'<span class="pdf-cell-truncate">{html_escape(description)}</span>'
                                 "</td>"
                             ),
                             (
-                                f'<td rowspan="{line_count}" class="pdf-cell-merged">'
+                                f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">'
                                 f'<span class="pdf-badge {html_escape(status_class)}">{html_escape(status_label)}</span>'
                                 "</td>"
                             ),
-                            f'<td rowspan="{line_count}" class="pdf-cell-merged">{html_escape(created_by)}</td>',
+                            f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">{html_escape(created_by)}</td>',
                         ]
                     )
 
                 row_cells.extend(
                     [
-                        f"<td>{html_escape(item_name)}</td>",
-                        f'<td class="pdf-col-qty">{html_escape(quantity_label)}</td>',
-                        f"<td>{html_escape(unit_label)}</td>",
+                        f'<td class="pdf-line-cell {line_class}">{html_escape(item_name)}</td>',
+                        f'<td class="pdf-col-qty pdf-line-cell {line_class}">{html_escape(quantity_label)}</td>',
+                        f'<td class="pdf-line-cell {line_class}">{html_escape(unit_label)}</td>',
                     ]
                 )
 
