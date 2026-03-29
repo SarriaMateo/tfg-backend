@@ -8,6 +8,7 @@ from html import escape as html_escape
 from zoneinfo import ZoneInfo
 import csv
 import io
+import os
 
 from app.db.models.transaction import Transaction, OperationType, TransactionStatus
 from app.db.models.transaction_line import TransactionLine
@@ -173,6 +174,20 @@ class TransactionService:
         return template_path, css_path
 
     @staticmethod
+    def _prepare_weasyprint_runtime() -> None:
+        """Prepare dynamic library lookup paths for WeasyPrint in macOS environments."""
+        existing_paths = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+        current_parts = [part for part in existing_paths.split(":") if part]
+
+        preferred_parts = ["/opt/homebrew/lib", "/usr/local/lib"]
+        merged_parts: List[str] = []
+        for path in preferred_parts + current_parts:
+            if path and path not in merged_parts:
+                merged_parts.append(path)
+
+        os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = ":".join(merged_parts)
+
+    @staticmethod
     def _escape_pdf_text(value: str) -> str:
         """Escape PDF text control characters for content stream strings."""
         return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
@@ -180,8 +195,9 @@ class TransactionService:
     @staticmethod
     def _build_fallback_pdf_bytes(lines: List[str]) -> bytes:
         """Build a minimal one-page PDF when WeasyPrint runtime dependencies are unavailable."""
-        y = 790
-        content_rows: List[str] = ["BT", "/F1 10 Tf", "40 790 Td"]
+        # A4 landscape media box is 842x595; keep text origin inside visible page area.
+        y = 560
+        content_rows: List[str] = ["BT", "/F1 10 Tf", "40 560 Td"]
         for index, line in enumerate(lines):
             if index > 0:
                 content_rows.append("0 -14 Td")
@@ -423,6 +439,7 @@ class TransactionService:
         )
 
         try:
+            TransactionService._prepare_weasyprint_runtime()
             from weasyprint import HTML
 
             return HTML(string=html_content, base_url=str(template_path.parent)).write_pdf(stylesheets=[str(css_path)])
