@@ -304,7 +304,7 @@ class TransactionService:
 
     @staticmethod
     def _build_pdf_rows_html(transactions: List[Transaction], user_map: dict[int, User]) -> str:
-        """Build transaction rows HTML with one row per transaction line."""
+        """Build transaction rows HTML merging transaction-level columns with rowspan."""
         rows: List[str] = []
 
         for transaction in transactions:
@@ -331,42 +331,57 @@ class TransactionService:
             operation_class = operation_class_map.get(transaction.operation_type, "")
             status_class = status_class_map.get(transaction.status, "")
 
-            for line in transaction.lines:
-                item_name = line.item.name if line.item else "-"
-                unit_label = TransactionService.UNIT_SHORT_LABELS.get(line.item.unit, "-") if line.item else "-"
-                quantity_label = TransactionService._format_decimal_for_export(line.quantity)
-
-                rows.append(
-                    """
-                    <tr>
-                      <td>{id}</td>
-                      <td><span class="pdf-badge {operation_class}">{operation}</span></td>
-                      <td>{origin_branch}</td>
-                      <td>{destination_branch}</td>
-                      <td>{created_at}</td>
-                      <td><span class="pdf-cell-truncate">{description}</span></td>
-                      <td><span class="pdf-badge {status_class}">{status}</span></td>
-                      <td>{created_by}</td>
-                      <td>{item}</td>
-                      <td class="pdf-col-qty">{quantity}</td>
-                      <td>{unit}</td>
-                    </tr>
-                    """.format(
-                        id=transaction.id,
-                        operation_class=html_escape(operation_class),
-                        operation=html_escape(operation_label),
-                        origin_branch=html_escape(origin_branch),
-                        destination_branch=html_escape(destination_branch),
-                        created_at=html_escape(created_at_label),
-                        description=html_escape(description),
-                        status_class=html_escape(status_class),
-                        status=html_escape(status_label),
-                        created_by=html_escape(created_by),
-                        item=html_escape(item_name),
-                        quantity=html_escape(quantity_label),
-                        unit=html_escape(unit_label),
-                    ).strip()
+            line_count = max(len(transaction.lines), 1)
+            for index in range(line_count):
+                line = transaction.lines[index] if index < len(transaction.lines) else None
+                item_name = line.item.name if line and line.item else "-"
+                unit_label = (
+                    TransactionService.UNIT_SHORT_LABELS.get(line.item.unit, "-")
+                    if line and line.item
+                    else "-"
                 )
+                quantity_label = (
+                    TransactionService._format_decimal_for_export(line.quantity)
+                    if line
+                    else "-"
+                )
+
+                row_cells: List[str] = []
+                if index == 0:
+                    row_cells.extend(
+                        [
+                            f'<td rowspan="{line_count}" class="pdf-cell-merged">{transaction.id}</td>',
+                            (
+                                f'<td rowspan="{line_count}" class="pdf-cell-merged">'
+                                f'<span class="pdf-badge {html_escape(operation_class)}">{html_escape(operation_label)}</span>'
+                                "</td>"
+                            ),
+                            f'<td rowspan="{line_count}" class="pdf-cell-merged">{html_escape(origin_branch)}</td>',
+                            f'<td rowspan="{line_count}" class="pdf-cell-merged">{html_escape(destination_branch)}</td>',
+                            f'<td rowspan="{line_count}" class="pdf-cell-merged">{html_escape(created_at_label)}</td>',
+                            (
+                                f'<td rowspan="{line_count}" class="pdf-cell-merged">'
+                                f'<span class="pdf-cell-truncate">{html_escape(description)}</span>'
+                                "</td>"
+                            ),
+                            (
+                                f'<td rowspan="{line_count}" class="pdf-cell-merged">'
+                                f'<span class="pdf-badge {html_escape(status_class)}">{html_escape(status_label)}</span>'
+                                "</td>"
+                            ),
+                            f'<td rowspan="{line_count}" class="pdf-cell-merged">{html_escape(created_by)}</td>',
+                        ]
+                    )
+
+                row_cells.extend(
+                    [
+                        f"<td>{html_escape(item_name)}</td>",
+                        f'<td class="pdf-col-qty">{html_escape(quantity_label)}</td>',
+                        f"<td>{html_escape(unit_label)}</td>",
+                    ]
+                )
+
+                rows.append(f"<tr>{''.join(row_cells)}</tr>")
 
         if not rows:
             rows.append(

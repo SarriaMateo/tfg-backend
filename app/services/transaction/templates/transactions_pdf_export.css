@@ -266,9 +266,14 @@ body {
 
 .pdf-cell-truncate {
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.pdf-cell-merged {
+  vertical-align: middle;
 }
 
 .pdf-badge {
