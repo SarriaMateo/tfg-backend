@@ -21,3 +21,6 @@ passlib[bcrypt]>=1.7.4
 # Testing
 pytest>=8.0.0
 httpx>=0.26.0
+
+# PDF rendering
+weasyprint>=62.0

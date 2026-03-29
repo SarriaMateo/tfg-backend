@@ -1,0 +1,381 @@
+/*
+  Transaction export PDF stylesheet
+  Designed for HTML -> PDF renderers (Puppeteer, Playwright, wkhtmltopdf, WeasyPrint)
+*/
+
+:root {
+  --pdf-primary: #0d6efd;
+  --pdf-primary-dark: #004999;
+  --pdf-primary-soft: #e7f1ff;
+  --pdf-bg: #f8fafc;
+  --pdf-surface: #ffffff;
+  --pdf-text: #2c3e50;
+  --pdf-text-muted: #6b7280;
+  --pdf-border: #dbe6ff;
+  --pdf-border-strong: #bdd2ff;
+  --pdf-success: #198754;
+  --pdf-warning: #b08900;
+  --pdf-danger: #dc3545;
+}
+
+@page {
+  size: A4 landscape;
+  margin: 14mm 10mm 12mm;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--pdf-text);
+  background: var(--pdf-bg);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.pdf-report {
+  color: var(--pdf-text);
+}
+
+.pdf-header {
+  background: linear-gradient(135deg, #ffffff 0%, #f3f8ff 100%);
+  border: 1px solid var(--pdf-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  break-inside: avoid;
+}
+
+.pdf-header-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.pdf-brand {
+  max-width: 65%;
+}
+
+.pdf-brand-name {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.15;
+  color: #1a365d;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.pdf-brand-meta {
+  margin: 4px 0 0;
+  color: var(--pdf-text-muted);
+  font-size: 10.5px;
+}
+
+.pdf-document {
+  text-align: right;
+  min-width: 220px;
+}
+
+.pdf-document-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pdf-primary-dark);
+}
+
+.pdf-document-subtitle {
+  margin: 4px 0 0;
+  color: var(--pdf-text-muted);
+  font-size: 10px;
+}
+
+.pdf-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pdf-meta-item {
+  background: var(--pdf-surface);
+  border: 1px solid var(--pdf-border);
+  border-radius: 8px;
+  padding: 7px 8px;
+}
+
+.pdf-meta-label {
+  display: block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--pdf-text-muted);
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+
+.pdf-meta-value {
+  display: block;
+  font-size: 10.5px;
+  color: var(--pdf-text);
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.pdf-filters {
+  margin-top: 10px;
+  border-top: 1px dashed var(--pdf-border-strong);
+  padding-top: 8px;
+}
+
+.pdf-filters-title {
+  margin: 0 0 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--pdf-primary-dark);
+  font-weight: 700;
+}
+
+.pdf-filter-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pdf-filter-chip {
+  background: var(--pdf-primary-soft);
+  color: var(--pdf-primary-dark);
+  border: 1px solid var(--pdf-border-strong);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 9.5px;
+  line-height: 1.1;
+  font-weight: 600;
+}
+
+.pdf-table-wrap {
+  background: var(--pdf-surface);
+  border: 1px solid var(--pdf-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.pdf-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.pdf-table thead {
+  display: table-header-group;
+}
+
+.pdf-table tfoot {
+  display: table-footer-group;
+}
+
+.pdf-table th,
+.pdf-table td {
+  padding: 7px 6px;
+  border-bottom: 1px solid #edf2ff;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.pdf-table th {
+  background: linear-gradient(180deg, #eef5ff 0%, #e2eeff 100%);
+  color: #1a365d;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.45px;
+  font-weight: 700;
+  text-align: left;
+  border-bottom: 1px solid var(--pdf-border-strong);
+}
+
+.pdf-table tbody tr:nth-child(odd) {
+  background: #fcfdff;
+}
+
+.pdf-table tbody tr:nth-child(even) {
+  background: #f7faff;
+}
+
+.pdf-table tbody tr:hover {
+  background: #eef5ff;
+}
+
+.pdf-table tbody tr {
+  page-break-inside: avoid;
+}
+
+.pdf-col-id {
+  width: 5.5%;
+}
+
+.pdf-col-type {
+  width: 6.5%;
+}
+
+.pdf-col-branch {
+  width: 10%;
+}
+
+.pdf-col-destination {
+  width: 10%;
+}
+
+.pdf-col-datetime {
+  width: 12%;
+}
+
+.pdf-col-description {
+  width: 16.5%;
+}
+
+.pdf-col-status {
+  width: 8%;
+}
+
+.pdf-col-created-by {
+  width: 10%;
+}
+
+.pdf-col-item {
+  width: 10%;
+}
+
+.pdf-col-qty {
+  width: 6.5%;
+  text-align: right;
+}
+
+.pdf-col-unit {
+  width: 5%;
+}
+
+.pdf-cell-truncate {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pdf-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.pdf-badge.status-pending,
+.pdf-badge.status-pendiente {
+  color: #7a5d00;
+  background: #fff8e1;
+  border-color: #f2dea0;
+}
+
+.pdf-badge.status-completed,
+.pdf-badge.status-completada {
+  color: #0b5f3a;
+  background: #e8f7ef;
+  border-color: #b8e4cb;
+}
+
+.pdf-badge.status-cancelled,
+.pdf-badge.status-cancelada,
+.pdf-badge.status-rechazada {
+  color: #8d1d2a;
+  background: #fdecef;
+  border-color: #f4c2cb;
+}
+
+.pdf-badge.status-transit,
+.pdf-badge.status-en-transito {
+  color: #0b4f74;
+  background: #e9f6ff;
+  border-color: #b7ddf3;
+}
+
+.pdf-badge.type-entry,
+.pdf-badge.type-entrada {
+  color: #0a4d87;
+  background: #e8f3ff;
+  border-color: #bfdcff;
+}
+
+.pdf-badge.type-exit,
+.pdf-badge.type-salida {
+  color: #8d1d2a;
+  background: #fdecef;
+  border-color: #f4c2cb;
+}
+
+.pdf-badge.type-transfer,
+.pdf-badge.type-transferencia {
+  color: #5a3ea5;
+  background: #f2edff;
+  border-color: #d9cfff;
+}
+
+.pdf-badge.type-adjustment,
+.pdf-badge.type-ajuste {
+  color: #6a4d00;
+  background: #fff4d6;
+  border-color: #f2d28c;
+}
+
+.pdf-table .number,
+.pdf-table .qty,
+.pdf-table .numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-footer {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--pdf-text-muted);
+  font-size: 9.5px;
+}
+
+.pdf-footer strong {
+  color: #1a365d;
+}
+
+.pdf-watermark {
+  position: fixed;
+  right: 9mm;
+  bottom: 7mm;
+  font-size: 8.5px;
+  color: #9aa6bf;
+}
+
+@media print {
+  body {
+    background: #ffffff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .pdf-header,
+  .pdf-table-wrap {
+    box-shadow: none;
+  }
+}

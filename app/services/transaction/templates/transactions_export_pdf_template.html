@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Exportación de operaciones</title>
+</head>
+<body>
+  <main class="pdf-report">
+    <section class="pdf-header">
+      <div class="pdf-header-top">
+        <div class="pdf-brand">
+          <h1 class="pdf-brand-name">{{company_name}}</h1>
+          <p class="pdf-brand-meta">NIF: {{company_nif}} | Email: {{company_email}}</p>
+        </div>
+        <div class="pdf-document">
+          <h2 class="pdf-document-title">Listado de operaciones</h2>
+          <p class="pdf-document-subtitle">Documento generado automáticamente</p>
+        </div>
+      </div>
+
+      <div class="pdf-meta-grid">
+        <div class="pdf-meta-item">
+          <span class="pdf-meta-label">Usuario</span>
+          <span class="pdf-meta-value">{{user_name}}</span>
+        </div>
+        <div class="pdf-meta-item">
+          <span class="pdf-meta-label">Fecha y hora de exportación</span>
+          <span class="pdf-meta-value">{{exported_at}}</span>
+        </div>
+        <div class="pdf-meta-item">
+          <span class="pdf-meta-label">Total operaciones</span>
+          <span class="pdf-meta-value">{{total_transactions}}</span>
+        </div>
+        <div class="pdf-meta-item">
+          <span class="pdf-meta-label">Total líneas</span>
+          <span class="pdf-meta-value">{{total_lines}}</span>
+        </div>
+      </div>
+
+      <div class="pdf-filters">
+        <h3 class="pdf-filters-title">Criterios aplicados</h3>
+        <ul class="pdf-filter-list">
+          {{filters_html}}
+        </ul>
+      </div>
+    </section>
+
+    <section class="pdf-table-wrap">
+      <table class="pdf-table">
+        <thead>
+          <tr>
+            <th class="pdf-col-id">Id</th>
+            <th class="pdf-col-type">Tipo</th>
+            <th class="pdf-col-branch">Sede</th>
+            <th class="pdf-col-destination">Sede destino</th>
+            <th class="pdf-col-datetime">Fecha y hora</th>
+            <th class="pdf-col-description">Descripción</th>
+            <th class="pdf-col-status">Estado</th>
+            <th class="pdf-col-created-by">Creada por</th>
+            <th class="pdf-col-item">Artículo</th>
+            <th class="pdf-col-qty">Cantidad</th>
+            <th class="pdf-col-unit">Unidad</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{rows_html}}
+        </tbody>
+      </table>
+    </section>
+
+    <footer class="pdf-footer">
+      <span><strong>Exportación:</strong> Operaciones</span>
+      <span><strong>Ordenación:</strong> {{order_label}}</span>
+    </footer>
+  </main>
+</body>
+</html>

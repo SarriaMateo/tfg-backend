@@ -4,6 +4,8 @@ from typing import Optional, List, Tuple
 from pathlib import Path
 from datetime import datetime, date
 from decimal import Decimal
+from html import escape as html_escape
+from zoneinfo import ZoneInfo
 import csv
 import io
 
@@ -17,6 +19,7 @@ from app.repositories.user_repository import UserRepository
 from app.repositories.transaction_repository import TransactionRepository
 from app.repositories.item_repository import ItemRepository
 from app.repositories.branch_repository import BranchRepository
+from app.repositories.company_repository import CompanyRepository
 from app.repositories.stock_movement_repository import StockMovementRepository
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionUpdateRequest
 from app.schemas.common import PaginatedResponse
@@ -162,13 +165,21 @@ class TransactionService:
         return output.getvalue().encode("utf-8-sig")
 
     @staticmethod
+    def _get_pdf_template_and_css_paths() -> tuple[Path, Path]:
+        """Resolve PDF HTML template and stylesheet paths."""
+        templates_dir = Path(__file__).resolve().parent / "templates"
+        template_path = templates_dir / "transactions_export_pdf_template.html"
+        css_path = templates_dir / "transactions_pdf_export.css"
+        return template_path, css_path
+
+    @staticmethod
     def _escape_pdf_text(value: str) -> str:
         """Escape PDF text control characters for content stream strings."""
         return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
     @staticmethod
-    def _build_minimal_pdf_bytes(lines: List[str]) -> bytes:
-        """Build a minimal one-page PDF with plain text lines."""
+    def _build_fallback_pdf_bytes(lines: List[str]) -> bytes:
+        """Build a minimal one-page PDF when WeasyPrint runtime dependencies are unavailable."""
         y = 790
         content_rows: List[str] = ["BT", "/F1 10 Tf", "40 790 Td"]
         for index, line in enumerate(lines):
@@ -212,18 +223,220 @@ class TransactionService:
         return b"".join(pdf_chunks)
 
     @staticmethod
-    def _build_transactions_pdf_bytes(transactions: List[Transaction]) -> bytes:
-        """Build temporary PDF bytes while full HTML+WeasyPrint template is implemented."""
+    def _get_order_label(order_by: str, order_desc: bool) -> str:
+        """Build Spanish order label for PDF header/footer."""
+        if order_by == "total_items":
+            if order_desc:
+                return "Total de líneas (de mayor a menor)"
+            return "Total de líneas (de menor a mayor)"
+
+        if order_desc:
+            return "Fecha y hora (más reciente primero)"
+        return "Fecha y hora (más antigua primero)"
+
+    @staticmethod
+    def _build_pdf_filter_chips_html(
+        db: Session,
+        branch_id: Optional[int],
+        operation_type: Optional[OperationType],
+        status_filter: Optional[TransactionStatus],
+        performed_by: Optional[int],
+        item_id: Optional[int],
+        start_date: Optional[date],
+        end_date: Optional[date],
+        search: Optional[str],
+    ) -> str:
+        """Build only-used filter chips for PDF header."""
+        chips: List[str] = []
+
+        if branch_id is not None:
+            branch = BranchRepository.get_by_id(db, branch_id)
+            branch_name = branch.name if branch else str(branch_id)
+            chips.append(f"<li class=\"pdf-filter-chip\">Sede: {html_escape(branch_name)}</li>")
+
+        if operation_type is not None:
+            operation_label = TransactionService.OPERATION_TYPE_LABELS.get(operation_type, operation_type.value)
+            chips.append(f"<li class=\"pdf-filter-chip\">Tipo: {html_escape(operation_label)}</li>")
+
+        if status_filter is not None:
+            status_label = TransactionService.STATUS_LABELS.get(status_filter, status_filter.value)
+            chips.append(f"<li class=\"pdf-filter-chip\">Estado: {html_escape(status_label)}</li>")
+
+        if performed_by is not None:
+            user = UserRepository.get_by_id(db, performed_by)
+            user_name = user.name if user else str(performed_by)
+            chips.append(f"<li class=\"pdf-filter-chip\">Realizada por: {html_escape(user_name)}</li>")
+
+        if item_id is not None:
+            item = ItemRepository.get_by_id(db, item_id)
+            item_name = item.name if item else str(item_id)
+            chips.append(f"<li class=\"pdf-filter-chip\">Artículo: {html_escape(item_name)}</li>")
+
+        if start_date is not None:
+            chips.append(f"<li class=\"pdf-filter-chip\">Desde: {html_escape(start_date.strftime('%d/%m/%Y'))}</li>")
+
+        if end_date is not None:
+            chips.append(f"<li class=\"pdf-filter-chip\">Hasta: {html_escape(end_date.strftime('%d/%m/%Y'))}</li>")
+
+        if search:
+            chips.append(f"<li class=\"pdf-filter-chip\">Búsqueda: {html_escape(search.strip())}</li>")
+
+        if not chips:
+            chips.append('<li class="pdf-filter-chip">Sin filtros adicionales</li>')
+
+        return "\n".join(chips)
+
+    @staticmethod
+    def _build_pdf_rows_html(transactions: List[Transaction], user_map: dict[int, User]) -> str:
+        """Build transaction rows HTML with one row per transaction line."""
+        rows: List[str] = []
+
+        for transaction in transactions:
+            origin_branch = transaction.branch.name if transaction.branch else "-"
+            destination_branch = transaction.destination_branch.name if transaction.destination_branch else "-"
+            created_by = TransactionService._get_created_by_name(transaction, user_map)
+            operation_label = TransactionService.OPERATION_TYPE_LABELS.get(transaction.operation_type, "-")
+            status_label = TransactionService.STATUS_LABELS.get(transaction.status, "-")
+            created_at_label = TransactionService._format_datetime_for_export(transaction.created_at)
+            description = transaction.description or ""
+
+            operation_class_map = {
+                OperationType.IN: "type-entrada",
+                OperationType.OUT: "type-salida",
+                OperationType.TRANSFER: "type-transferencia",
+                OperationType.ADJUSTMENT: "type-ajuste",
+            }
+            status_class_map = {
+                TransactionStatus.PENDING: "status-pendiente",
+                TransactionStatus.TRANSIT: "status-en-transito",
+                TransactionStatus.COMPLETED: "status-completada",
+                TransactionStatus.CANCELLED: "status-cancelada",
+            }
+            operation_class = operation_class_map.get(transaction.operation_type, "")
+            status_class = status_class_map.get(transaction.status, "")
+
+            for line in transaction.lines:
+                item_name = line.item.name if line.item else "-"
+                unit_label = TransactionService.UNIT_SHORT_LABELS.get(line.item.unit, "-") if line.item else "-"
+                quantity_label = TransactionService._format_decimal_for_export(line.quantity)
+
+                rows.append(
+                    """
+                    <tr>
+                      <td>{id}</td>
+                      <td><span class="pdf-badge {operation_class}">{operation}</span></td>
+                      <td>{origin_branch}</td>
+                      <td>{destination_branch}</td>
+                      <td>{created_at}</td>
+                      <td><span class="pdf-cell-truncate">{description}</span></td>
+                      <td><span class="pdf-badge {status_class}">{status}</span></td>
+                      <td>{created_by}</td>
+                      <td>{item}</td>
+                      <td class="pdf-col-qty">{quantity}</td>
+                      <td>{unit}</td>
+                    </tr>
+                    """.format(
+                        id=transaction.id,
+                        operation_class=html_escape(operation_class),
+                        operation=html_escape(operation_label),
+                        origin_branch=html_escape(origin_branch),
+                        destination_branch=html_escape(destination_branch),
+                        created_at=html_escape(created_at_label),
+                        description=html_escape(description),
+                        status_class=html_escape(status_class),
+                        status=html_escape(status_label),
+                        created_by=html_escape(created_by),
+                        item=html_escape(item_name),
+                        quantity=html_escape(quantity_label),
+                        unit=html_escape(unit_label),
+                    ).strip()
+                )
+
+        if not rows:
+            rows.append(
+                '<tr><td colspan="11">No hay operaciones para los criterios seleccionados.</td></tr>'
+            )
+
+        return "\n".join(rows)
+
+    @staticmethod
+    def _build_transactions_pdf_bytes(
+        db: Session,
+        current_user: User,
+        transactions: List[Transaction],
+        user_map: dict[int, User],
+        branch_id: Optional[int],
+        operation_type: Optional[OperationType],
+        status_filter: Optional[TransactionStatus],
+        performed_by: Optional[int],
+        item_id: Optional[int],
+        start_date: Optional[date],
+        end_date: Optional[date],
+        search: Optional[str],
+        order_by: str,
+        order_desc: bool,
+    ) -> bytes:
+        """Render HTML template and transform it to PDF using WeasyPrint."""
+        template_path, css_path = TransactionService._get_pdf_template_and_css_paths()
+        if not template_path.exists() or not css_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="PDF_TEMPLATE_NOT_AVAILABLE"
+            )
+
+        company = CompanyRepository.get_by_id(db, current_user.company_id)
+        company_name = company.name if company else "-"
+        company_nif = company.nif if company and company.nif else "-"
+        company_email = company.email if company else "-"
+
         total_transactions = len(transactions)
         total_lines = sum(len(transaction.lines) for transaction in transactions)
-        lines = [
-            "Exportacion de operaciones",
-            f"Total de operaciones: {total_transactions}",
-            f"Total de lineas: {total_lines}",
-            "",
-            "Nota: La maquetacion final del PDF se implementara en la siguiente etapa.",
-        ]
-        return TransactionService._build_minimal_pdf_bytes(lines)
+        exported_at = datetime.now(ZoneInfo("Europe/Madrid")).strftime("%d/%m/%Y %H:%M")
+
+        filters_html = TransactionService._build_pdf_filter_chips_html(
+            db=db,
+            branch_id=branch_id,
+            operation_type=operation_type,
+            status_filter=status_filter,
+            performed_by=performed_by,
+            item_id=item_id,
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
+        )
+        rows_html = TransactionService._build_pdf_rows_html(transactions, user_map)
+        order_label = TransactionService._get_order_label(order_by, order_desc)
+
+        html_template = template_path.read_text(encoding="utf-8")
+        html_content = (
+            html_template
+            .replace("{{company_name}}", html_escape(company_name))
+            .replace("{{company_nif}}", html_escape(company_nif))
+            .replace("{{company_email}}", html_escape(company_email))
+            .replace("{{user_name}}", html_escape(current_user.name))
+            .replace("{{exported_at}}", html_escape(exported_at))
+            .replace("{{total_transactions}}", str(total_transactions))
+            .replace("{{total_lines}}", str(total_lines))
+            .replace("{{filters_html}}", filters_html)
+            .replace("{{rows_html}}", rows_html)
+            .replace("{{order_label}}", html_escape(order_label))
+        )
+
+        try:
+            from weasyprint import HTML
+
+            return HTML(string=html_content, base_url=str(template_path.parent)).write_pdf(stylesheets=[str(css_path)])
+        except Exception:
+            fallback_lines = [
+                "Exportacion de operaciones",
+                f"Empresa: {company_name}",
+                f"Usuario: {current_user.name}",
+                f"Fecha y hora: {exported_at}",
+                f"Total operaciones: {total_transactions}",
+                f"Total lineas: {total_lines}",
+                "Renderizado simplificado por dependencias de WeasyPrint no disponibles.",
+            ]
+            return TransactionService._build_fallback_pdf_bytes(fallback_lines)
 
     @staticmethod
     def _complete_transaction_in_place(
@@ -1364,7 +1577,22 @@ class TransactionService:
             file_bytes = TransactionService._build_transactions_csv_bytes(transactions, user_map)
             media_type = "text/csv; charset=utf-8"
         else:
-            file_bytes = TransactionService._build_transactions_pdf_bytes(transactions)
+            file_bytes = TransactionService._build_transactions_pdf_bytes(
+                db=db,
+                current_user=current_user,
+                transactions=transactions,
+                user_map=user_map,
+                branch_id=branch_id,
+                operation_type=operation_type,
+                status_filter=status_filter,
+                performed_by=performed_by,
+                item_id=item_id,
+                start_date=start_date,
+                end_date=end_date,
+                search=search,
+                order_by=order_by,
+                order_desc=order_desc,
+            )
             media_type = "application/pdf"
 
         filename = TransactionService._build_export_filename_for_format(export_format)
