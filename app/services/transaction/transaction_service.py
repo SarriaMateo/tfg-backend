@@ -28,7 +28,8 @@ class TransactionService:
     """Business logic service for transactions."""
 
     # Export constraints
-    EXPORT_MAX_LINES = 50000
+    EXPORT_MAX_LINES_CSV = 50000
+    EXPORT_MAX_LINES_PDF = 10000
 
     OPERATION_TYPE_LABELS = {
         OperationType.IN: "Entrada",
@@ -117,6 +118,13 @@ class TransactionService:
         return f"operaciones_{current.strftime('%Y%m%d_%H%M')}.csv"
 
     @staticmethod
+    def _build_export_filename_for_format(export_format: str, now: Optional[datetime] = None) -> str:
+        """Build export filename with extension based on requested format."""
+        current = now or datetime.utcnow()
+        extension = "csv" if export_format == "csv" else "pdf"
+        return f"operaciones_{current.strftime('%Y%m%d_%H%M')}.{extension}"
+
+    @staticmethod
     def _build_transactions_csv_bytes(transactions: List[Transaction], user_map: dict[int, User]) -> bytes:
         """Build CSV content for transactions export with one row per line."""
         output = io.StringIO()
@@ -152,6 +160,70 @@ class TransactionService:
                 ])
 
         return output.getvalue().encode("utf-8-sig")
+
+    @staticmethod
+    def _escape_pdf_text(value: str) -> str:
+        """Escape PDF text control characters for content stream strings."""
+        return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    @staticmethod
+    def _build_minimal_pdf_bytes(lines: List[str]) -> bytes:
+        """Build a minimal one-page PDF with plain text lines."""
+        y = 790
+        content_rows: List[str] = ["BT", "/F1 10 Tf", "40 790 Td"]
+        for index, line in enumerate(lines):
+            if index > 0:
+                content_rows.append("0 -14 Td")
+            content_rows.append(f"({TransactionService._escape_pdf_text(line)}) Tj")
+            y -= 14
+            if y < 40:
+                break
+        content_rows.append("ET")
+        content_stream = "\n".join(content_rows) + "\n"
+
+        objects: List[str] = [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            f"<< /Length {len(content_stream.encode('latin-1'))} >>\nstream\n{content_stream}endstream",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        ]
+
+        pdf_chunks: List[bytes] = [b"%PDF-1.4\n"]
+        offsets = [0]
+
+        for index, obj in enumerate(objects, start=1):
+            offsets.append(sum(len(chunk) for chunk in pdf_chunks))
+            pdf_chunks.append(f"{index} 0 obj\n{obj}\nendobj\n".encode("latin-1"))
+
+        xref_offset = sum(len(chunk) for chunk in pdf_chunks)
+        xref_lines = ["xref", f"0 {len(objects) + 1}", "0000000000 65535 f "]
+        xref_lines.extend(f"{offset:010d} 00000 n " for offset in offsets[1:])
+        trailer = (
+            "trailer\n"
+            f"<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            "startxref\n"
+            f"{xref_offset}\n"
+            "%%EOF\n"
+        )
+
+        pdf_chunks.append(("\n".join(xref_lines) + "\n").encode("latin-1"))
+        pdf_chunks.append(trailer.encode("latin-1"))
+        return b"".join(pdf_chunks)
+
+    @staticmethod
+    def _build_transactions_pdf_bytes(transactions: List[Transaction]) -> bytes:
+        """Build temporary PDF bytes while full HTML+WeasyPrint template is implemented."""
+        total_transactions = len(transactions)
+        total_lines = sum(len(transaction.lines) for transaction in transactions)
+        lines = [
+            "Exportacion de operaciones",
+            f"Total de operaciones: {total_transactions}",
+            f"Total de lineas: {total_lines}",
+            "",
+            "Nota: La maquetacion final del PDF se implementara en la siguiente etapa.",
+        ]
+        return TransactionService._build_minimal_pdf_bytes(lines)
 
     @staticmethod
     def _complete_transaction_in_place(
@@ -1220,7 +1292,7 @@ class TransactionService:
         return transactions, total
 
     @staticmethod
-    def export_transactions_csv(
+    def export_transactions_file(
         db: Session,
         current_user: User,
         export_format: str,
@@ -1234,14 +1306,14 @@ class TransactionService:
         search: Optional[str] = None,
         order_by: str = "created_at",
         order_desc: bool = True
-    ) -> tuple[bytes, str]:
+    ) -> tuple[bytes, str, str]:
         """
-        Export transactions as CSV bytes and filename.
+        Export transactions as file bytes, filename, and media type.
         """
         UserService.validate_user_active(current_user)
         TransactionService._validate_export_permission(current_user)
 
-        if export_format != "csv":
+        if export_format not in ("csv", "pdf"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="EXPORT_FORMAT_NOT_SUPPORTED"
@@ -1265,12 +1337,17 @@ class TransactionService:
             order_desc=order_desc,
         )
 
-        # Count total lines to validate export limit
+        # Count total lines to validate export limit by format
         total_lines = sum(len(transaction.lines) for transaction in transactions)
-        if total_lines > TransactionService.EXPORT_MAX_LINES:
+        max_lines = (
+            TransactionService.EXPORT_MAX_LINES_CSV
+            if export_format == "csv"
+            else TransactionService.EXPORT_MAX_LINES_PDF
+        )
+        if total_lines > max_lines:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"EXPORT_EXCEEDS_LIMIT_{TransactionService.EXPORT_MAX_LINES}"
+                detail=f"EXPORT_EXCEEDS_LIMIT_{max_lines}"
             )
 
         created_by_ids = {
@@ -1283,9 +1360,15 @@ class TransactionService:
         users = [UserRepository.get_by_id(db, user_id) for user_id in created_by_ids]
         user_map = {user.id: user for user in users if user is not None}
 
-        csv_bytes = TransactionService._build_transactions_csv_bytes(transactions, user_map)
-        filename = TransactionService._build_export_filename()
-        return csv_bytes, filename
+        if export_format == "csv":
+            file_bytes = TransactionService._build_transactions_csv_bytes(transactions, user_map)
+            media_type = "text/csv; charset=utf-8"
+        else:
+            file_bytes = TransactionService._build_transactions_pdf_bytes(transactions)
+            media_type = "application/pdf"
+
+        filename = TransactionService._build_export_filename_for_format(export_format)
+        return file_bytes, filename, media_type
 
     @staticmethod
     def upload_document(

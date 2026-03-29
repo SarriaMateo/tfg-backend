@@ -213,7 +213,7 @@ async def test_export_contract_denies_employee(client, export_contract_data):
 
 
 @pytest.mark.asyncio
-async def test_export_contract_rejects_pdf_for_now(client, export_contract_data):
+async def test_export_contract_allows_pdf_for_admin(client, export_contract_data):
     admin = export_contract_data["users"]["admin"]
     token = _token_for(admin)
 
@@ -222,8 +222,41 @@ async def test_export_contract_rejects_pdf_for_now(client, export_contract_data)
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "EXPORT_FORMAT_NOT_SUPPORTED"
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/pdf")
+    assert "attachment; filename=\"operaciones_" in response.headers["content-disposition"]
+    assert response.headers["content-disposition"].endswith(".pdf\"")
+    assert response.content.startswith(b"%PDF")
+
+
+@pytest.mark.asyncio
+async def test_export_contract_denies_employee_for_pdf(client, export_contract_data):
+    employee = export_contract_data["users"]["employee"]
+    token = _token_for(employee)
+
+    response = await client.get(
+        "/api/v1/transactions/export?format=pdf",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "INSUFFICIENT_ROLE"
+
+
+@pytest.mark.asyncio
+async def test_export_contract_manager_branch_scope_overrides_filter_for_pdf(client, export_contract_data):
+    manager = export_contract_data["users"]["manager"]
+    branch_b = export_contract_data["branches"]["b"]
+    token = _token_for(manager)
+
+    response = await client.get(
+        f"/api/v1/transactions/export?format=pdf&branch_id={branch_b.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/pdf")
+    assert response.content.startswith(b"%PDF")
 
 
 @pytest.mark.asyncio
@@ -388,3 +421,54 @@ async def test_export_contract_rejects_export_exceeding_line_limit(client, db_se
 
     assert response.status_code == 400
     assert "EXPORT_EXCEEDS_LIMIT_50000" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_export_contract_rejects_pdf_export_exceeding_line_limit(client, db_session, export_contract_data):
+    admin = export_contract_data["users"]["admin"]
+    branch_a = export_contract_data["branches"]["a"]
+    company = export_contract_data["branches"]["a"].company
+    item = (
+        db_session.query(Item)
+        .filter(Item.company_id == company.id)
+        .first()
+    )
+    token = _token_for(admin)
+
+    # Generate a transaction with 10001 lines to exceed the PDF limit
+    big_transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        created_at=datetime.utcnow(),
+        description="Bulk transaction for PDF",
+        branch_id=branch_a.id,
+    )
+    db_session.add(big_transaction)
+    db_session.flush()
+
+    # Add 10001 lines to exceed EXPORT_MAX_LINES_PDF (10000)
+    for i in range(10001):
+        db_session.add(
+            TransactionLine(
+                quantity=Decimal("1.000"),
+                item_id=item.id,
+                transaction_id=big_transaction.id,
+            )
+        )
+    db_session.add(
+        TransactionEvent(
+            action_type=ActionType.CREATED,
+            timestamp=datetime.utcnow(),
+            transaction_id=big_transaction.id,
+            performed_by=admin.id,
+        )
+    )
+    db_session.commit()
+
+    response = await client.get(
+        "/api/v1/transactions/export?format=pdf",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert "EXPORT_EXCEEDS_LIMIT_10000" in response.json()["detail"]

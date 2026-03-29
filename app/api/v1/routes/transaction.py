@@ -117,7 +117,7 @@ def export_transactions(
     """
     Export transactions using the same filters/search/sorting as listing.
     """
-    csv_bytes, filename = TransactionService.export_transactions_csv(
+    file_bytes, filename, media_type = TransactionService.export_transactions_file(
         db=db,
         current_user=current_user,
         export_format=export_format,
@@ -134,8 +134,8 @@ def export_transactions(
     )
 
     return Response(
-        content=csv_bytes,
-        media_type="text/csv; charset=utf-8",
+        content=file_bytes,
+        media_type=media_type,
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"'
         },
