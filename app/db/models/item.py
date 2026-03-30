@@ -9,6 +9,7 @@ from sqlalchemy import Integer, String, Boolean, DateTime, ForeignKey, Enum as S
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.db.models.association import item_categories
+from app.core.datetime_utils import madrid_now
 
 if TYPE_CHECKING:
     from app.db.models.company import Company
@@ -37,7 +38,7 @@ class Item(Base):
         SAEnum(Unit, name="item_unit", native_enum=False),
         nullable=False
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=madrid_now)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)

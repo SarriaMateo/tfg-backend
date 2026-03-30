@@ -373,6 +373,38 @@ async def test_export_contract_orders_by_total_items_desc(client, export_contrac
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status_filter, expected_transaction_keys, expected_rows",
+    [
+        ("PENDING", ("a", "b"), 2),
+        ("COMPLETED", tuple(), 0),
+        ("CANCELLED", tuple(), 0),
+        ("TRANSIT", ("to_a",), 2),
+    ],
+)
+async def test_export_contract_filters_by_all_status_values(
+    client, export_contract_data, status_filter, expected_transaction_keys, expected_rows
+):
+    admin = export_contract_data["users"]["admin"]
+    token = _token_for(admin)
+
+    response = await client.get(
+        f"/api/v1/transactions/export?format=csv&status={status_filter}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    rows = _read_csv(response)
+    assert len(rows) == expected_rows
+
+    expected_ids = {
+        str(export_contract_data["transactions"][key].id)
+        for key in expected_transaction_keys
+    }
+    assert {row["Id"] for row in rows} == expected_ids
+
+
+@pytest.mark.asyncio
 async def test_export_contract_rejects_export_exceeding_line_limit(client, db_session, export_contract_data):
     admin = export_contract_data["users"]["admin"]
     branch_a = export_contract_data["branches"]["a"]

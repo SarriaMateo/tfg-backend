@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Integer, DateTime, ForeignKey, Enum as SAEnum, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
+from app.core.datetime_utils import madrid_now
 
 if TYPE_CHECKING:
     from app.db.models.item import Item
@@ -31,7 +32,7 @@ class StockMovement(Base):
         SAEnum(MovementType, name="movement_type", native_enum=False),
         nullable=False
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=madrid_now)
     item_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("items.id"),

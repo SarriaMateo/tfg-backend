@@ -1998,6 +1998,64 @@ async def test_list_transactions_filter_by_transit_status(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status_filter", ["PENDING", "COMPLETED", "CANCELLED", "TRANSIT"])
+async def test_list_transactions_filter_by_all_status_values(
+    client, db_session, company_with_transactions_data, status_filter
+):
+    """Test listing supports every status enum value, including TRANSIT."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    pending_tx = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id
+    )
+    completed_tx = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        branch_id=branch.id
+    )
+    cancelled_tx = Transaction(
+        operation_type=OperationType.OUT,
+        status=TransactionStatus.CANCELLED,
+        branch_id=branch.id
+    )
+    transit_tx = Transaction(
+        operation_type=OperationType.TRANSFER,
+        status=TransactionStatus.TRANSIT,
+        branch_id=branch.id,
+        destination_branch_id=destination_branch.id,
+    )
+
+    db_session.add_all([pending_tx, completed_tx, cancelled_tx, transit_tx])
+    db_session.flush()
+
+    db_session.add_all([
+        TransactionLine(quantity=2, item_id=item.id, transaction_id=pending_tx.id),
+        TransactionLine(quantity=3, item_id=item.id, transaction_id=completed_tx.id),
+        TransactionLine(quantity=4, item_id=item.id, transaction_id=cancelled_tx.id),
+        TransactionLine(quantity=5, item_id=item.id, transaction_id=transit_tx.id),
+    ])
+    db_session.commit()
+
+    token = build_token(user)
+    response = await client.get(
+        f"/api/v1/transactions?status={status_filter}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["total"] == 1
+    assert len(result["data"]) == 1
+    assert result["data"][0]["status"] == status_filter
+
+
+@pytest.mark.asyncio
 async def test_user_with_branch_only_sees_own_branch_transactions(
     client, db_session, company_with_transactions_data
 ):
@@ -2144,6 +2202,51 @@ async def test_list_transactions_filter_by_date_range(
     assert result["data"][0]["id"] == tx_in_range.id
     assert result["data"][0]["has_document"] is False
     assert "document_url" not in result["data"][0]
+
+
+@pytest.mark.asyncio
+async def test_list_transactions_search_item_filter_with_total_items_order(
+    client, db_session, company_with_transactions_data
+):
+    """Regression test for duplicate transaction_lines alias when combining filters."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item_match = data["items"][0]  # PROD001 / Product A
+    item_other = data["items"][1]  # PROD002 / Product B
+
+    tx_match = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id
+    )
+    tx_other = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id
+    )
+    db_session.add_all([tx_match, tx_other])
+    db_session.flush()
+
+    db_session.add_all([
+        TransactionLine(quantity=5, item_id=item_match.id, transaction_id=tx_match.id),
+        TransactionLine(quantity=2, item_id=item_other.id, transaction_id=tx_match.id),
+        TransactionLine(quantity=7, item_id=item_other.id, transaction_id=tx_other.id),
+    ])
+    db_session.commit()
+
+    token = build_token(user)
+
+    response = await client.get(
+        f"/api/v1/transactions?item_id={item_match.id}&search=PROD001&order_by=total_items",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["total"] == 1
+    assert len(result["data"]) == 1
+    assert result["data"][0]["id"] == tx_match.id
 
 
 # =============================================================================

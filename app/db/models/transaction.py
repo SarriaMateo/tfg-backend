@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import Integer, String, DateTime, ForeignKey, Enum as SAEnum, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
+from app.core.datetime_utils import madrid_now
 
 if TYPE_CHECKING:
     from app.db.models.branch import Branch
@@ -43,7 +44,7 @@ class Transaction(Base):
         nullable=False,
         default=TransactionStatus.PENDING
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=madrid_now)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     document_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     document_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

@@ -5,7 +5,6 @@ from pathlib import Path
 from datetime import datetime, date
 from decimal import Decimal
 from html import escape as html_escape
-from zoneinfo import ZoneInfo
 import csv
 import io
 import os
@@ -24,6 +23,7 @@ from app.repositories.company_repository import CompanyRepository
 from app.repositories.stock_movement_repository import StockMovementRepository
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionUpdateRequest
 from app.schemas.common import PaginatedResponse
+from app.core.datetime_utils import madrid_now
 from app.core.file_handler import TransactionDocumentHandler
 from app.services.user.user_service import UserService
 
@@ -118,13 +118,13 @@ class TransactionService:
     @staticmethod
     def _build_export_filename(now: Optional[datetime] = None) -> str:
         """Build export filename using requested naming convention."""
-        current = now or datetime.utcnow()
+        current = now or madrid_now()
         return f"operaciones_{current.strftime('%Y%m%d_%H%M')}.csv"
 
     @staticmethod
     def _build_export_filename_for_format(export_format: str, now: Optional[datetime] = None) -> str:
         """Build export filename with extension based on requested format."""
-        current = now or datetime.utcnow()
+        current = now or madrid_now()
         extension = "csv" if export_format == "csv" else "pdf"
         return f"operaciones_{current.strftime('%Y%m%d_%H%M')}.{extension}"
 
@@ -465,7 +465,7 @@ class TransactionService:
 
         total_transactions = len(transactions)
         total_lines = sum(len(transaction.lines) for transaction in transactions)
-        exported_at = datetime.now(ZoneInfo("Europe/Madrid")).strftime("%d/%m/%Y %H:%M")
+        exported_at = madrid_now().strftime("%d/%m/%Y %H:%M")
 
         order_label = TransactionService._get_order_label(order_by, order_desc)
         filters_html = TransactionService._build_pdf_filter_chips_html(
@@ -585,7 +585,7 @@ class TransactionService:
             stock_movement = StockMovement(
                 quantity=quantity,
                 movement_type=MovementType(transaction.operation_type.value),
-                created_at=datetime.utcnow(),
+                created_at=madrid_now(),
                 item_id=line.item_id,
                 branch_id=transaction.branch_id,
                 transaction_id=transaction.id
@@ -594,7 +594,7 @@ class TransactionService:
 
         event = TransactionEvent(
             action_type=ActionType.COMPLETED,
-            timestamp=datetime.utcnow(),
+            timestamp=madrid_now(),
             transaction_id=transaction.id,
             performed_by=performed_by
         )
@@ -634,7 +634,7 @@ class TransactionService:
             stock_movement = StockMovement(
                 quantity=-line.quantity,
                 movement_type=MovementType.TRANSFER,
-                created_at=datetime.utcnow(),
+                created_at=madrid_now(),
                 item_id=line.item_id,
                 branch_id=transaction.branch_id,
                 transaction_id=transaction.id
@@ -643,7 +643,7 @@ class TransactionService:
 
         event = TransactionEvent(
             action_type=ActionType.SENT,
-            timestamp=datetime.utcnow(),
+            timestamp=madrid_now(),
             transaction_id=transaction.id,
             performed_by=performed_by
         )
@@ -672,7 +672,7 @@ class TransactionService:
             stock_movement = StockMovement(
                 quantity=line.quantity,
                 movement_type=MovementType.TRANSFER,
-                created_at=datetime.utcnow(),
+                created_at=madrid_now(),
                 item_id=line.item_id,
                 branch_id=destination_branch_id,
                 transaction_id=transaction.id
@@ -681,7 +681,7 @@ class TransactionService:
 
         event = TransactionEvent(
             action_type=ActionType.COMPLETED,
-            timestamp=datetime.utcnow(),
+            timestamp=madrid_now(),
             transaction_id=transaction.id,
             performed_by=performed_by
         )
@@ -1214,7 +1214,7 @@ class TransactionService:
             description=transaction_data.description,
             branch_id=transaction_data.branch_id,
             destination_branch_id=transaction_data.destination_branch_id,
-            created_at=datetime.utcnow()
+            created_at=madrid_now()
         )
         TransactionRepository.create(db, transaction)
         
@@ -1230,7 +1230,7 @@ class TransactionService:
         # Create CREATED event
         event = TransactionEvent(
             action_type=ActionType.CREATED,
-            timestamp=datetime.utcnow(),
+            timestamp=madrid_now(),
             transaction_id=transaction.id,
             performed_by=current_user.id
         )
@@ -1349,7 +1349,7 @@ class TransactionService:
         if changes:
             event = TransactionEvent(
                 action_type=ActionType.EDITED,
-                timestamp=datetime.utcnow(),
+                timestamp=madrid_now(),
                 transaction_id=transaction.id,
                 performed_by=current_user.id,
                 event_metadata=changes
@@ -1426,7 +1426,7 @@ class TransactionService:
         
         event = TransactionEvent(
             action_type=ActionType.CANCELLED,
-            timestamp=datetime.utcnow(),
+            timestamp=madrid_now(),
             transaction_id=transaction.id,
             performed_by=current_user.id,
             event_metadata=metadata

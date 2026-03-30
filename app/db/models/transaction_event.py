@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import Integer, DateTime, ForeignKey, Enum as SAEnum, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
+from app.core.datetime_utils import madrid_now
 
 if TYPE_CHECKING:
     from app.db.models.transaction import Transaction
@@ -29,7 +30,7 @@ class TransactionEvent(Base):
         SAEnum(ActionType, name="action_type", native_enum=False),
         nullable=False
     )
-    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=madrid_now)
     event_metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     transaction_id: Mapped[int] = mapped_column(
         Integer,

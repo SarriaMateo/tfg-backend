@@ -57,16 +57,20 @@ class TransactionRepository:
             )
 
         if item_id is not None:
-            query = query.join(TransactionLine).filter(
-                TransactionLine.item_id == item_id
+            query = query.filter(
+                Transaction.lines.any(TransactionLine.item_id == item_id)
             )
 
         if search:
             search_pattern = f"%{search}%"
-            query = query.join(TransactionLine).join(Item).filter(
-                or_(
-                    Item.name.ilike(search_pattern),
-                    Item.sku.ilike(search_pattern)
+            query = query.filter(
+                Transaction.lines.any(
+                    TransactionLine.item.has(
+                        or_(
+                            Item.name.ilike(search_pattern),
+                            Item.sku.ilike(search_pattern)
+                        )
+                    )
                 )
             )
 
@@ -133,7 +137,7 @@ class TransactionRepository:
         - company_id: Required, filter by company
         - branch_id: Optional, filter by branch as origin or as destination
         - operation_type: Optional, filter by operation type (IN, OUT, TRANSFER, ADJUSTMENT)
-        - status: Optional, filter by status (PENDING, CANCELLED, COMPLETED)
+        - status: Optional, filter by status (PENDING, TRANSIT, CANCELLED, COMPLETED)
         - performed_by: Optional, filter by user who completed the transaction
         - item_id: Optional, filter by item (if transaction_line contains this item)
         - search: Optional, search in item names and SKUs
@@ -173,17 +177,21 @@ class TransactionRepository:
         
         # Filter by item in transaction_lines
         if item_id is not None:
-            query = query.join(TransactionLine).filter(
-                TransactionLine.item_id == item_id
+            query = query.filter(
+                Transaction.lines.any(TransactionLine.item_id == item_id)
             )
         
         # Search by item name or SKU
         if search:
             search_pattern = f"%{search}%"
-            query = query.join(TransactionLine).join(Item).filter(
-                or_(
-                    Item.name.ilike(search_pattern),
-                    Item.sku.ilike(search_pattern)
+            query = query.filter(
+                Transaction.lines.any(
+                    TransactionLine.item.has(
+                        or_(
+                            Item.name.ilike(search_pattern),
+                            Item.sku.ilike(search_pattern)
+                        )
+                    )
                 )
             )
 

@@ -55,7 +55,7 @@ def list_transactions(
     Filters:
     - branch_id: Filter by branch as origin or as destination
     - operation_type: Filter by operation type (IN, OUT, TRANSFER, ADJUSTMENT)
-    - status: Filter by status (PENDING, CANCELLED, COMPLETED)
+    - status: Filter by status (PENDING, TRANSIT, CANCELLED, COMPLETED)
     - performed_by: Filter by user who performed action
     - item_id: Filter by item in transaction lines
     - start_date: Filter transactions created on/after this date
