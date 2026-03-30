@@ -88,12 +88,16 @@ def test_build_pdf_rows_html_merges_transaction_cells_with_rowspan():
         user_map=user_map,
     )
 
-    assert html_rows.count("<tr>") == 3
+    assert html_rows.count("<tr ") == 3
+    assert 'class="pdf-row pdf-row-start pdf-row-not-last pdf-group-odd"' in html_rows
+    assert 'class="pdf-row pdf-row-continuation pdf-row-last pdf-group-odd"' in html_rows
+    assert 'class="pdf-row pdf-row-start pdf-row-last pdf-group-even"' in html_rows
 
-    # Transaction 101 has 2 lines so merged cells must use rowspan=2 exactly once per merged column.
-    assert html_rows.count('<td rowspan="2" class="pdf-cell-merged pdf-group-odd">101</td>') == 1
-    assert html_rows.count('<td rowspan="2" class="pdf-cell-merged pdf-group-odd">Sede A</td>') == 1
-    assert html_rows.count('<td rowspan="2" class="pdf-cell-merged pdf-group-odd">Sede B</td>') == 1
+    # Transaction-level values appear once per operation and continuation rows keep merged cells empty.
+    assert html_rows.count('<div class="pdf-cell-merged-content">101</div>') == 1
+    assert html_rows.count('<div class="pdf-cell-merged-content">Sede A</div>') == 2
+    assert html_rows.count('<div class="pdf-cell-merged-content">Sede B</div>') == 1
+    assert html_rows.count('pdf-merged-empty') >= 7  # Continuation rows have multiple empty merged cells
 
     # Item-level cells must remain unmerged and appear once per line.
     assert '<td class="pdf-line-cell pdf-line-odd">Harina</td>' in html_rows
@@ -104,3 +108,28 @@ def test_build_pdf_rows_html_merges_transaction_cells_with_rowspan():
     assert '<td class="pdf-col-qty pdf-line-cell pdf-line-odd">5,5</td>' in html_rows
     assert '<td class="pdf-col-qty pdf-line-cell pdf-line-even">2</td>' in html_rows
     assert '<td class="pdf-col-qty pdf-line-cell pdf-line-odd">1</td>' in html_rows
+
+
+def test_build_pdf_filter_chips_html_without_filters_uses_default_label():
+    html_chips = TransactionService._build_pdf_filter_chips_html(
+        db=None,
+        branch_id=None,
+        operation_type=None,
+        status_filter=None,
+        performed_by=None,
+        item_id=None,
+        start_date=None,
+        end_date=None,
+        search=None,
+        order_label="Fecha y hora (mas reciente primero)",
+    )
+
+    assert '<li class="pdf-filter-chip">Sin filtros adicionales</li>' in html_chips
+    assert '<li class="pdf-filter-chip">Ordenación: Fecha y hora (mas reciente primero)</li>' in html_chips
+
+
+def test_build_pdf_rows_html_without_transactions_returns_empty_row():
+    html_rows = TransactionService._build_pdf_rows_html([], user_map={})
+
+    assert 'class="pdf-row pdf-row-empty"' in html_rows
+    assert 'No hay operaciones para los criterios seleccionados.' in html_rows

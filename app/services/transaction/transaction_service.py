@@ -142,7 +142,7 @@ class TransactionService:
             operation_label = TransactionService.OPERATION_TYPE_LABELS.get(transaction.operation_type, "-")
             status_label = TransactionService.STATUS_LABELS.get(transaction.status, "-")
             created_at_label = TransactionService._format_datetime_for_export(transaction.created_at)
-            description = transaction.description or ""
+            description = (transaction.description or "").strip() or "-"
             group_class = "pdf-group-odd" if transaction_index % 2 == 0 else "pdf-group-even"
 
             for line in transaction.lines:
@@ -262,6 +262,7 @@ class TransactionService:
         start_date: Optional[date],
         end_date: Optional[date],
         search: Optional[str],
+        order_label: str,
     ) -> str:
         """Build only-used filter chips for PDF header."""
         chips: List[str] = []
@@ -298,7 +299,9 @@ class TransactionService:
         if search:
             chips.append(f"<li class=\"pdf-filter-chip\">Búsqueda: {html_escape(search.strip())}</li>")
 
-        if not chips:
+        chips.append(f"<li class=\"pdf-filter-chip\">Ordenación: {html_escape(order_label)}</li>")
+
+        if len(chips) == 1:
             chips.append('<li class="pdf-filter-chip">Sin filtros adicionales</li>')
 
         return "\n".join(chips)
@@ -334,9 +337,11 @@ class TransactionService:
             status_class = status_class_map.get(transaction.status, "")
 
             line_count = max(len(transaction.lines), 1)
+            value_row_index = (line_count - 1) // 2 if line_count > 1 else 0
             for index in range(line_count):
                 line = transaction.lines[index] if index < len(transaction.lines) else None
                 line_class = "pdf-line-odd" if index % 2 == 0 else "pdf-line-even"
+                merge_variant = "pdf-merged-value" if index == value_row_index else "pdf-merged-empty"
                 item_name = line.item.name if line and line.item else "-"
                 unit_label = (
                     TransactionService.UNIT_SHORT_LABELS.get(line.item.unit, "-")
@@ -350,31 +355,64 @@ class TransactionService:
                 )
 
                 row_cells: List[str] = []
-                if index == 0:
-                    row_cells.extend(
-                        [
-                            f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">{transaction.id}</td>',
-                            (
-                                f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">'
-                                f'<span class="pdf-badge {html_escape(operation_class)}">{html_escape(operation_label)}</span>'
-                                "</td>"
-                            ),
-                            f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">{html_escape(origin_branch)}</td>',
-                            f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">{html_escape(destination_branch)}</td>',
-                            f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">{html_escape(created_at_label)}</td>',
-                            (
-                                f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">'
-                                f'<span class="pdf-cell-truncate">{html_escape(description)}</span>'
-                                "</td>"
-                            ),
-                            (
-                                f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">'
-                                f'<span class="pdf-badge {html_escape(status_class)}">{html_escape(status_label)}</span>'
-                                "</td>"
-                            ),
-                            f'<td rowspan="{line_count}" class="pdf-cell-merged {group_class}">{html_escape(created_by)}</td>',
-                        ]
-                    )
+                show_merged_value = index == value_row_index
+                id_html = str(transaction.id) if show_merged_value else ""
+                operation_html = (
+                    f'<span class="pdf-badge {html_escape(operation_class)}">{html_escape(operation_label)}</span>'
+                    if show_merged_value
+                    else ""
+                )
+                origin_html = html_escape(origin_branch) if show_merged_value else ""
+                destination_html = html_escape(destination_branch) if show_merged_value else ""
+                created_at_html = html_escape(created_at_label) if show_merged_value else ""
+                description_html = (
+                    f'<span class="pdf-cell-truncate">{html_escape(description)}</span>'
+                    if show_merged_value
+                    else ""
+                )
+                status_html = (
+                    f'<span class="pdf-badge {html_escape(status_class)}">{html_escape(status_label)}</span>'
+                    if show_merged_value
+                    else ""
+                )
+                created_by_html = html_escape(created_by) if show_merged_value else ""
+
+                # Helper to wrap content: badges go directly in cell, others use merged-content wrapper
+                def wrap_merged_cell(content: str) -> str:
+                    if not content:
+                        return content
+                    if '<span class="pdf-badge' in content:
+                        return content  # Badges go directly, no wrapper
+                    return f'<div class="pdf-cell-merged-content">{content}</div>'
+
+                row_cells.extend(
+                    [
+                        (
+                            f'<td class="pdf-cell-merged {group_class} {merge_variant}">{wrap_merged_cell(id_html)}</td>'
+                        ),
+                        (
+                            f'<td class="pdf-cell-merged {group_class} {merge_variant}">{wrap_merged_cell(operation_html)}</td>'
+                        ),
+                        (
+                            f'<td class="pdf-cell-merged {group_class} {merge_variant}">{wrap_merged_cell(origin_html)}</td>'
+                        ),
+                        (
+                            f'<td class="pdf-cell-merged {group_class} {merge_variant}">{wrap_merged_cell(destination_html)}</td>'
+                        ),
+                        (
+                            f'<td class="pdf-cell-merged {group_class} {merge_variant}">{wrap_merged_cell(created_at_html)}</td>'
+                        ),
+                        (
+                            f'<td class="pdf-cell-merged {group_class} {merge_variant}">{wrap_merged_cell(description_html)}</td>'
+                        ),
+                        (
+                            f'<td class="pdf-cell-merged {group_class} {merge_variant}">{wrap_merged_cell(status_html)}</td>'
+                        ),
+                        (
+                            f'<td class="pdf-cell-merged {group_class} {merge_variant}">{wrap_merged_cell(created_by_html)}</td>'
+                        ),
+                    ]
+                )
 
                 row_cells.extend(
                     [
@@ -384,11 +422,13 @@ class TransactionService:
                     ]
                 )
 
-                rows.append(f"<tr>{''.join(row_cells)}</tr>")
+                row_kind = "pdf-row-start" if index == 0 else "pdf-row-continuation"
+                row_tail = "pdf-row-last" if index == line_count - 1 else "pdf-row-not-last"
+                rows.append(f'<tr class="pdf-row {row_kind} {row_tail} {group_class}">{"".join(row_cells)}</tr>')
 
         if not rows:
             rows.append(
-                '<tr><td colspan="11">No hay operaciones para los criterios seleccionados.</td></tr>'
+                '<tr class="pdf-row pdf-row-empty"><td colspan="11">No hay operaciones para los criterios seleccionados.</td></tr>'
             )
 
         return "\n".join(rows)
@@ -427,6 +467,7 @@ class TransactionService:
         total_lines = sum(len(transaction.lines) for transaction in transactions)
         exported_at = datetime.now(ZoneInfo("Europe/Madrid")).strftime("%d/%m/%Y %H:%M")
 
+        order_label = TransactionService._get_order_label(order_by, order_desc)
         filters_html = TransactionService._build_pdf_filter_chips_html(
             db=db,
             branch_id=branch_id,
@@ -437,9 +478,9 @@ class TransactionService:
             start_date=start_date,
             end_date=end_date,
             search=search,
+            order_label=order_label,
         )
         rows_html = TransactionService._build_pdf_rows_html(transactions, user_map)
-        order_label = TransactionService._get_order_label(order_by, order_desc)
 
         html_template = template_path.read_text(encoding="utf-8")
         html_content = (
@@ -453,7 +494,6 @@ class TransactionService:
             .replace("{{total_lines}}", str(total_lines))
             .replace("{{filters_html}}", filters_html)
             .replace("{{rows_html}}", rows_html)
-            .replace("{{order_label}}", html_escape(order_label))
         )
 
         try:

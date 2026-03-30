@@ -32,7 +32,7 @@ body {
   margin: 0;
   padding: 0;
   color: var(--pdf-text);
-  background: var(--pdf-bg);
+  background: #ffffff;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   font-size: 11px;
   line-height: 1.35;
@@ -163,8 +163,7 @@ body {
 }
 
 .pdf-table-wrap {
-  background: var(--pdf-surface);
-  border: 1px solid var(--pdf-border);
+  background: #ffffff;
   border-radius: 10px;
   overflow: hidden;
 }
@@ -174,6 +173,7 @@ body {
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
+  background: #ffffff;
 }
 
 .pdf-table thead {
@@ -205,6 +205,14 @@ body {
 
 .pdf-table tbody tr {
   page-break-inside: avoid;
+}
+
+.pdf-table tbody tr.pdf-row-start td {
+  border-top: 1px solid #d9e6ff;
+}
+
+.pdf-table tbody tr:first-child td {
+  border-top: none;
 }
 
 .pdf-col-id {
@@ -261,23 +269,44 @@ body {
 }
 
 .pdf-cell-merged {
-  vertical-align: middle;
+  vertical-align: middle !important;
+  background-clip: padding-box;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.pdf-cell-merged-content {
+  display: flex;
+  align-items: center;
+  min-height: 18px;
+}
+
+.pdf-row.pdf-row-not-last .pdf-cell-merged {
+  border-bottom: none;
+}
+
+.pdf-row.pdf-row-last .pdf-cell-merged {
+  border-bottom: 1px solid #edf2ff;
+}
+
+.pdf-cell-merged.pdf-merged-empty .pdf-cell-merged-content {
+  min-height: 0;
 }
 
 .pdf-cell-merged.pdf-group-odd {
-  background: #fcfdff;
+  background-color: #fcfdff !important;
 }
 
 .pdf-cell-merged.pdf-group-even {
-  background: #f7faff;
+  background-color: #f7faff !important;
 }
 
 .pdf-line-cell.pdf-line-odd {
-  background: #fcfdff;
+  background-color: #fcfdff !important;
 }
 
 .pdf-line-cell.pdf-line-even {
-  background: #f7faff;
+  background-color: #f7faff !important;
 }
 
 .pdf-badge {
