@@ -301,14 +301,20 @@ async def upload_document(
     ADMIN/MANAGER: allowed for any transaction status.
     EMPLOYEE: allowed for PENDING, or for COMPLETED/CANCELLED only if they created the transaction.
     
-    Supported formats: PDF, Word, Excel, Images (JPG, PNG, WebP)
+    Supported formats: PDF, Word, Excel, CSV, TXT, Images (JPG, PNG, WebP, HEIC, HEIF, AVIF).
+    HEIC/HEIF/AVIF images are converted to WebP before storage.
     Maximum size: 10MB
     """
     document_file = await document.read()
     document_filename = document.filename or "unknown"
     
     transaction = TransactionService.upload_document(
-        db, transaction_id, current_user, document_file, document_filename
+        db,
+        transaction_id,
+        current_user,
+        document_file,
+        document_filename,
+        document.content_type,
     )
     return transaction
 

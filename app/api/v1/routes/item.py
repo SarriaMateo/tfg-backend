@@ -204,6 +204,7 @@ async def upload_item_image(
         current_user=current_user,
         image_file=image_file,
         image_filename=image_filename,
+        image_content_type=image.content_type,
     )
     ItemRepository.commit(db)
     return item

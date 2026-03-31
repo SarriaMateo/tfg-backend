@@ -24,3 +24,7 @@ httpx>=0.26.0
 
 # PDF rendering
 weasyprint>=62.0
+
+# Image conversion
+Pillow>=10.3.0
+pillow-heif>=0.16.0

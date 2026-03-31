@@ -420,6 +420,47 @@ async def test_upload_item_image_replaces_previous_image_and_updates_name(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "filename,mime_type",
+    [
+        ("foto.heic", "image/heic"),
+        ("foto.heif", "image/heif"),
+        ("foto.avif", "image/avif"),
+    ],
+)
+async def test_upload_item_image_converts_heic_heif_avif_to_webp(
+    client,
+    active_admin_same_company,
+    company_with_data,
+    monkeypatch,
+    filename,
+    mime_type,
+):
+    from app.core.file_handler import ItemImageHandler
+
+    monkeypatch.setattr(ItemImageHandler, "_convert_to_webp", classmethod(lambda cls, content: b"converted-webp"))
+
+    token = build_token(active_admin_same_company)
+    item = company_with_data["items"][2]
+
+    upload_response = await client.post(
+        f"/api/v1/items/{item.id}/image",
+        files={"image": (filename, b"fake-input", mime_type)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert upload_response.status_code == 200
+
+    get_response = await client.get(
+        f"/api/v1/items/{item.id}/image",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert get_response.status_code == 200
+    content_disposition = get_response.headers.get("content-disposition", "")
+    assert 'filename="foto.webp"' in content_disposition
+    assert get_response.headers["content-type"].startswith("image/webp")
+
+
+@pytest.mark.asyncio
 async def test_delete_item_image_is_idempotent_and_returns_has_image_false(
     client,
     active_admin_same_company,

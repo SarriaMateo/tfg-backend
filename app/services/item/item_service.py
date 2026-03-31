@@ -343,7 +343,8 @@ class ItemService:
         item_id: int,
         current_user: User,
         image_file: bytes,
-        image_filename: str
+        image_filename: str,
+        image_content_type: Optional[str] = None
     ) -> Item:
         """Upload or replace image for an item."""
         ItemService._validate_image_write_permission(current_user)
@@ -356,9 +357,13 @@ class ItemService:
         item.image_url = ItemImageHandler.save_image(
             image_file,
             image_filename,
-            item.company_id
+            item.company_id,
+            image_content_type
         )
-        item.image_name = image_filename
+        item.image_name = ItemImageHandler.get_storage_filename(
+            image_filename,
+            image_content_type
+        )
 
         ItemRepository.update(db, item)
         ItemRepository.commit(db)

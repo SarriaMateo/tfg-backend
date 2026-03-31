@@ -1766,7 +1766,8 @@ class TransactionService:
         transaction_id: int,
         current_user: User,
         document_file: bytes,
-        document_filename: str
+        document_filename: str,
+        document_content_type: Optional[str] = None
     ) -> Transaction:
         """
         Upload a document to a transaction.
@@ -1791,11 +1792,17 @@ class TransactionService:
         
         # Save new document
         document_url = TransactionDocumentHandler.save_document(
-            document_file, document_filename, current_user.company_id
+            document_file,
+            document_filename,
+            current_user.company_id,
+            document_content_type
         )
         
         transaction.document_url = document_url
-        transaction.document_name = document_filename
+        transaction.document_name = TransactionDocumentHandler.get_storage_filename(
+            document_filename,
+            document_content_type
+        )
         TransactionRepository.update(db, transaction)
         TransactionRepository.commit(db)
         

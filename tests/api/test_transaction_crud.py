@@ -2491,6 +2491,139 @@ async def test_employee_can_upload_document_on_completed_transaction_created_by_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "filename,mime_type",
+    [
+        ("albaran.heic", "image/heic"),
+        ("albaran.heif", "image/heif"),
+        ("albaran.avif", "image/avif"),
+    ],
+)
+async def test_admin_upload_document_converts_heic_heif_avif_to_webp(
+    client,
+    db_session,
+    company_with_transactions_data,
+    monkeypatch,
+    filename,
+    mime_type,
+):
+    from app.core.file_handler import TransactionDocumentHandler
+
+    monkeypatch.setattr(
+        TransactionDocumentHandler,
+        "_convert_to_webp",
+        classmethod(lambda cls, content: b"converted-webp")
+    )
+
+    data = company_with_transactions_data
+    admin_user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id,
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(
+        quantity=2,
+        item_id=item.id,
+        transaction_id=transaction.id,
+    ))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=admin_user.id,
+    ))
+    db_session.commit()
+
+    token = build_token(admin_user)
+
+    upload_response = await client.post(
+        f"/api/v1/transactions/{transaction.id}/document",
+        files={"document": (filename, b"fake-input", mime_type)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert upload_response.status_code == 200
+    assert upload_response.json()["has_document"] is True
+
+    get_response = await client.get(
+        f"/api/v1/transactions/{transaction.id}/document",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert get_response.status_code == 200
+    assert get_response.headers["content-type"].startswith("image/webp")
+    content_disposition = get_response.headers.get("content-disposition", "")
+    assert 'filename="albaran.webp"' in content_disposition
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "filename,mime_type,file_content,expected_content_type",
+    [
+        ("informe.csv", "text/csv", b"sku,qty\nABC,2\n", "text/csv"),
+        ("nota.txt", "text/plain", b"comentario de prueba", "text/plain"),
+    ],
+)
+async def test_admin_upload_document_accepts_csv_and_txt(
+    client,
+    db_session,
+    company_with_transactions_data,
+    filename,
+    mime_type,
+    file_content,
+    expected_content_type,
+):
+    data = company_with_transactions_data
+    admin_user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    transaction = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.PENDING,
+        branch_id=branch.id,
+    )
+    db_session.add(transaction)
+    db_session.flush()
+
+    db_session.add(TransactionLine(
+        quantity=1,
+        item_id=item.id,
+        transaction_id=transaction.id,
+    ))
+    db_session.add(TransactionEvent(
+        action_type=ActionType.CREATED,
+        transaction_id=transaction.id,
+        performed_by=admin_user.id,
+    ))
+    db_session.commit()
+
+    token = build_token(admin_user)
+
+    upload_response = await client.post(
+        f"/api/v1/transactions/{transaction.id}/document",
+        files={"document": (filename, file_content, mime_type)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert upload_response.status_code == 200
+    assert upload_response.json()["has_document"] is True
+
+    get_response = await client.get(
+        f"/api/v1/transactions/{transaction.id}/document",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert get_response.status_code == 200
+    assert get_response.headers["content-type"].startswith(expected_content_type)
+    content_disposition = get_response.headers.get("content-disposition", "")
+    assert f'filename="{filename}"' in content_disposition
+
+
+@pytest.mark.asyncio
 async def test_employee_cannot_delete_document_on_completed_transaction_not_created_by_them(
     client, db_session, company_with_transactions_data
 ):
