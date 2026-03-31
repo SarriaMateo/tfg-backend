@@ -1,62 +1,289 @@
-# TFG – Inventory Backend
+# TFG - Inventory Backend
 
-Backend del Trabajo de Fin de Grado (TFG) para una aplicación web de **gestión de inventarios para pequeñas empresas**.
+Backend del Trabajo de Fin de Grado para una aplicacion de gestion de inventario multiempresa con control por sedes, roles, operaciones de stock y exportacion de historico.
 
-El proyecto está desarrollado en **Python** utilizando **FastAPI** como framework principal y una base de datos **MySQL**. El backend expone una **API REST** consumida por un frontend desarrollado de forma independiente.
+La API esta implementada con FastAPI y SQLAlchemy, con autenticacion JWT y reglas de negocio por rol.
 
----
+## Stack tecnologico
 
-## Tecnologías principales
+- Python 3.9+
+- FastAPI
+- SQLAlchemy 2
+- Alembic
+- MySQL (runtime)
+- Uvicorn
+- Pydantic v2 + pydantic-settings
+- python-jose + passlib (JWT y hashing)
+- WeasyPrint (export PDF)
+- Pillow + pillow-heif (imagenes y conversion HEIC/HEIF/AVIF a WebP)
+- Pytest + HTTPX
 
-- **Python 3**
-- **FastAPI** – Framework web
-- **SQLAlchemy** – ORM
-- **Alembic** – Migraciones de base de datos
-- **MySQL** – Base de datos relacional
-- **Uvicorn** – Servidor ASGI
+## Funcionalidad principal
 
----
+- Registro de empresa con creacion automatica de usuario ADMIN
+- Login con JWT y endpoint de perfil autenticado
+- Gestion de usuarios con roles ADMIN, MANAGER y EMPLOYEE
+- Gestion de sedes con estados activo/inactivo
+- Gestion de categorias
+- Gestion de articulos con:
+	- filtros, busqueda, ordenacion y paginacion
+	- stock por sede
+	- asociacion de categorias
+	- subida, consulta y borrado de imagen
+- Gestion de operaciones de inventario:
+	- tipos: IN, OUT, TRANSFER, ADJUSTMENT
+	- estados: PENDING, TRANSIT, COMPLETED, CANCELLED
+	- eventos historicos por operacion (CREATED, EDITED, SENT, COMPLETED, CANCELLED)
+	- adjuntos de documentos (PDF, Office, CSV, TXT, imagenes)
+- Exportacion de operaciones a CSV y PDF (con filtros)
 
-## Estructura del proyecto
+## Arquitectura
 
-El proyecto sigue una arquitectura en capas, inspirada en patrones habituales de desarrollo backend (similar a Spring Boot):
+Arquitectura por capas:
 
-- `api/` – Rutas y controladores REST (versionadas)
-- `services/` – Lógica de negocio
-- `repositories/` – Acceso a datos
-- `db/` – Configuración de base de datos y modelos
-- `schemas/` – DTOs (request / response)
-- `core/` – Configuración y seguridad
+- app/api/v1/routes: endpoints REST
+- app/services: logica de negocio
+- app/repositories: consultas/persistencia
+- app/db/models: modelo de datos SQLAlchemy
+- app/schemas: contratos de entrada/salida
+- app/core: seguridad, configuracion, manejo de ficheros y excepciones
 
----
+## Modelo de dominio (resumen)
 
-## 🚀 Ejecución en local
+- Company
+	- tiene Users, Branches, Items y Categories
+- User
+	- role: ADMIN | MANAGER | EMPLOYEE
+	- is_active
+	- puede estar asignado a una Branch
+- Branch
+	- is_active
+	- agrupa usuarios y operaciones
+- Item
+	- unidad de medida, datos comerciales y estado
+	- relacion N:N con Category
+	- imagen opcional
+- Transaction
+	- tipo de operacion y estado
+	- lineas de operacion
+	- eventos de auditoria
+	- documento opcional
+- StockMovement
+	- movimientos derivados de completar operaciones
 
-1. Crear y activar un entorno virtual
+## API y prefijo
+
+- Prefijo global: /api/v1
+- Swagger UI: http://localhost:8000/docs
+- OpenAPI JSON: http://localhost:8000/openapi.json
+
+### Endpoints por modulo
+
+- Auth
+	- POST /auth/login
+	- GET /auth/me
+- Company
+	- POST /company/register
+	- GET /company
+	- PUT /company
+- Users
+	- POST /users
+	- GET /users
+	- GET /users/{user_id}
+	- PUT /users/{user_id}
+	- PUT /users/{user_id}/admin
+	- DELETE /users/{user_id}
+- Branches
+	- POST /branches
+	- GET /branches
+	- GET /branches/{branch_id}
+	- PUT /branches/{branch_id}
+	- DELETE /branches/{branch_id}
+- Categories
+	- POST /categories
+	- GET /categories
+	- GET /categories/{category_id}
+	- PUT /categories/{category_id}
+	- DELETE /categories/{category_id}
+- Items
+	- GET /items
+	- POST /items
+	- GET /items/{item_id}
+	- PUT /items/{item_id}
+	- DELETE /items/{item_id}
+	- POST /items/{item_id}/categories
+	- GET /items/{item_id}/categories
+	- GET /items/{item_id}/image
+	- POST /items/{item_id}/image
+	- DELETE /items/{item_id}/image
+- Transactions
+	- GET /transactions
+	- GET /transactions/export?format=csv|pdf
+	- POST /transactions
+	- GET /transactions/{transaction_id}
+	- PUT /transactions/{transaction_id}
+	- POST /transactions/{transaction_id}/cancel
+	- POST /transactions/{transaction_id}/complete
+	- POST /transactions/{transaction_id}/document
+	- GET /transactions/{transaction_id}/document
+	- DELETE /transactions/{transaction_id}/document
+- Health/debug
+	- GET /health
+	- GET /db-check
+	- POST /test-user (debug)
+	- GET /debug/settings (debug)
+
+## Seguridad y autorizacion
+
+- Autenticacion Bearer JWT (OAuth2PasswordBearer)
+- Login bloqueado para usuarios inactivos
+- Control de acceso por rol:
+	- ADMIN: control total de empresa/sedes/usuarios
+	- MANAGER: gestion operativa (items, categorias, operaciones)
+	- EMPLOYEE: acceso operativo con restricciones
+- Reglas de visibilidad por sede:
+	- usuarios con sede asignada trabajan con alcance de su sede (segun endpoint)
+- Reglas de actividad:
+	- endpoints protegidos validan user.is_active
+
+## Ficheros y media
+
+- Carpeta base: media
+- Imagenes de articulos: media/items/{company_id}
+	- formatos: jpg, png, webp, heic, heif, avif
+	- limite: 5 MB
+- Documentos de operaciones: media/transactions/{company_id}
+	- formatos: PDF, Word, Excel, CSV, TXT, imagenes
+	- limite: 10 MB
+- HEIC/HEIF/AVIF se convierten a WebP al guardar
+
+## Exportaciones
+
+- CSV y PDF en GET /transactions/export
+- Solo ADMIN y MANAGER pueden exportar
+- Se aplican los mismos filtros de listado
+- Limites internos de exportacion para evitar cargas excesivas
+- PDF usa WeasyPrint y mantiene una ruta fallback para entornos sin dependencias nativas
+
+## Requisitos previos
+
+- Python 3.9+
+- MySQL en ejecucion
+
+## Configuracion de entorno
+
+Crear archivo .env en la raiz del proyecto.
+
+Variables consumidas por la aplicacion (app/core/config.py):
+
+- app_name
+- env
+- db_user
+- db_password
+- db_host
+- db_port
+- db_name
+- secret_key
+- access_token_expire_minutes
+
+Variables utilizadas por Alembic (alembic/env.py):
+
+- DB_USER
+- DB_PASSWORD
+- DB_HOST
+- DB_PORT
+- DB_NAME
+
+Ejemplo minimo de .env compatible con ambos:
+
+```env
+app_name=TFG Inventory Backend
+env=dev
+
+db_user=root
+db_password=your_password
+db_host=127.0.0.1
+db_port=3306
+db_name=inventory_db
+
+DB_USER=root
+DB_PASSWORD=your_password
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=inventory_db
+
+secret_key=change_this_secret
+access_token_expire_minutes=60
+```
+
+## Puesta en marcha local
+
+1. Crear entorno virtual
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
 2. Instalar dependencias
-3. Configurar el archivo `.env`
-4. Lanzar el servidor de desarrollo
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Aplicar migraciones
+
+```bash
+alembic upgrade head
+```
+
+4. Ejecutar servidor
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-La API estará disponible en:
+5. Abrir documentacion
 
-- http://localhost:8000
-- Documentación Swagger: http://localhost:8000/docs
+- http://localhost:8000/docs
 
----
+## Tests
 
-## Estado del proyecto
+La suite usa SQLite en memoria para aislamiento y rapidez (tests/conftest.py), creando esquema desde Base.metadata.
 
-Proyecto en desarrollo como parte de un **TFG**. Actualmente enfocado en la definición de la arquitectura y el desarrollo del MVP.
+Ejecutar todos los tests:
 
----
+```bash
+pytest
+```
+
+Ejecutar modulos concretos (ejemplos):
+
+```bash
+pytest tests/api/test_auth_login.py
+pytest tests/api/test_transaction_export_contract.py
+pytest tests/services/test_transaction_export_pdf_html.py
+```
+
+Cobertura funcional destacada en tests:
+
+- login y usuario actual
+- CRUD de empresa, usuarios, sedes
+- estados activos/inactivos (usuarios y sedes)
+- proteccion de endpoints para usuarios inactivos
+- listado avanzado de items
+- CRUD y flujo de operaciones
+- contrato de exportacion CSV/PDF
+
+## Notas de desarrollo
+
+- CORS permitido para frontend local en http://localhost:5173
+- El servicio expone endpoints de debug que no deberian habilitarse en produccion
+- Los codigos de error de negocio se devuelven como detail (por ejemplo: INSUFFICIENT_ROLE, USER_INACTIVE, ITEM_NOT_FOUND)
 
 ## Autor
 
-**Mateo Sarria Franco de Sarabia**
+Mateo Sarria Franco de Sarabia
 
-Trabajo de Fin de Grado – Grado en Ingeniería de Tecnologías y Servicios de Telecomunicación
+Trabajo de Fin de Grado - Grado en Ingenieria de Tecnologias y Servicios de Telecomunicacion
 
