@@ -1,10 +1,12 @@
 # TFG - Inventory Backend
 
-Backend del Trabajo de Fin de Grado para una aplicacion de gestion de inventario multiempresa con control por sedes, roles, operaciones de stock y exportacion de historico.
+Language: English | [Español](README-es.md)
 
-La API esta implementada con FastAPI y SQLAlchemy, con autenticacion JWT y reglas de negocio por rol.
+Backend for a Final Degree Project (TFG): a multi-company inventory management system with branch-level scope, role-based access, stock operations, and transaction history export.
 
-## Stack tecnologico
+The API is built with FastAPI and SQLAlchemy, using JWT authentication and role-based business rules.
+
+## Technology stack
 
 - Python 3.9+
 - FastAPI
@@ -13,168 +15,168 @@ La API esta implementada con FastAPI y SQLAlchemy, con autenticacion JWT y regla
 - MySQL (runtime)
 - Uvicorn
 - Pydantic v2 + pydantic-settings
-- python-jose + passlib (JWT y hashing)
-- WeasyPrint (export PDF)
-- Pillow + pillow-heif (imagenes y conversion HEIC/HEIF/AVIF a WebP)
+- python-jose + passlib (JWT and password hashing)
+- WeasyPrint (PDF export)
+- Pillow + pillow-heif (image support and HEIC/HEIF/AVIF to WebP conversion)
 - Pytest + HTTPX
 
-## Funcionalidad principal
+## Main features
 
-- Registro de empresa con creacion automatica de usuario ADMIN
-- Login con JWT y endpoint de perfil autenticado
-- Gestion de usuarios con roles ADMIN, MANAGER y EMPLOYEE
-- Gestion de sedes con estados activo/inactivo
-- Gestion de categorias
-- Gestion de articulos con:
-	- filtros, busqueda, ordenacion y paginacion
-	- stock por sede
-	- asociacion de categorias
-	- subida, consulta y borrado de imagen
-- Gestion de operaciones de inventario:
-	- tipos: IN, OUT, TRANSFER, ADJUSTMENT
-	- estados: PENDING, TRANSIT, COMPLETED, CANCELLED
-	- eventos historicos por operacion (CREATED, EDITED, SENT, COMPLETED, CANCELLED)
-	- adjuntos de documentos (PDF, Office, CSV, TXT, imagenes)
-- Exportacion de operaciones a CSV y PDF (con filtros)
+- Company registration with automatic ADMIN user creation
+- JWT login and authenticated profile endpoint
+- User management with ADMIN, MANAGER, and EMPLOYEE roles
+- Branch management with active/inactive status
+- Category management
+- Item management with:
+  - filters, search, sorting, and pagination
+  - stock per branch
+  - category assignment
+  - image upload, retrieval, and deletion
+- Inventory transaction management:
+  - types: IN, OUT, TRANSFER, ADJUSTMENT
+  - states: PENDING, TRANSIT, COMPLETED, CANCELLED
+  - historical events per transaction (CREATED, EDITED, SENT, COMPLETED, CANCELLED)
+  - document attachments (PDF, Office, CSV, TXT, images)
+- Transaction export to CSV and PDF (with filters)
 
-## Arquitectura
+## Architecture
 
-Arquitectura por capas:
+Layered architecture:
 
-- app/api/v1/routes: endpoints REST
-- app/services: logica de negocio
-- app/repositories: consultas/persistencia
-- app/db/models: modelo de datos SQLAlchemy
-- app/schemas: contratos de entrada/salida
-- app/core: seguridad, configuracion, manejo de ficheros y excepciones
+- app/api/v1/routes: REST endpoints
+- app/services: business logic
+- app/repositories: query/persistence layer
+- app/db/models: SQLAlchemy data model
+- app/schemas: input/output contracts
+- app/core: security, configuration, file handling, and exceptions
 
-## Modelo de dominio (resumen)
+## Domain model (summary)
 
 - Company
-	- tiene Users, Branches, Items y Categories
+  - owns Users, Branches, Items, and Categories
 - User
-	- role: ADMIN | MANAGER | EMPLOYEE
-	- is_active
-	- puede estar asignado a una Branch
+  - role: ADMIN | MANAGER | EMPLOYEE
+  - is_active
+  - may be assigned to a Branch
 - Branch
-	- is_active
-	- agrupa usuarios y operaciones
+  - is_active
+  - groups users and transactions
 - Item
-	- unidad de medida, datos comerciales y estado
-	- relacion N:N con Category
-	- imagen opcional
+  - unit of measure, commercial data, and active state
+  - N:N relationship with Category
+  - optional image
 - Transaction
-	- tipo de operacion y estado
-	- lineas de operacion
-	- eventos de auditoria
-	- documento opcional
+  - operation type and status
+  - transaction lines
+  - audit events
+  - optional document
 - StockMovement
-	- movimientos derivados de completar operaciones
+  - movements generated when completing transactions
 
-## API y prefijo
+## API and prefix
 
-- Prefijo global: /api/v1
+- Global prefix: /api/v1
 - Swagger UI: http://localhost:8000/docs
 - OpenAPI JSON: http://localhost:8000/openapi.json
 
-### Endpoints por modulo
+### Endpoints by module
 
 - Auth
-	- POST /auth/login
-	- GET /auth/me
+  - POST /auth/login
+  - GET /auth/me
 - Company
-	- POST /company/register
-	- GET /company
-	- PUT /company
+  - POST /company/register
+  - GET /company
+  - PUT /company
 - Users
-	- POST /users
-	- GET /users
-	- GET /users/{user_id}
-	- PUT /users/{user_id}
-	- PUT /users/{user_id}/admin
-	- DELETE /users/{user_id}
+  - POST /users
+  - GET /users
+  - GET /users/{user_id}
+  - PUT /users/{user_id}
+  - PUT /users/{user_id}/admin
+  - DELETE /users/{user_id}
 - Branches
-	- POST /branches
-	- GET /branches
-	- GET /branches/{branch_id}
-	- PUT /branches/{branch_id}
-	- DELETE /branches/{branch_id}
+  - POST /branches
+  - GET /branches
+  - GET /branches/{branch_id}
+  - PUT /branches/{branch_id}
+  - DELETE /branches/{branch_id}
 - Categories
-	- POST /categories
-	- GET /categories
-	- GET /categories/{category_id}
-	- PUT /categories/{category_id}
-	- DELETE /categories/{category_id}
+  - POST /categories
+  - GET /categories
+  - GET /categories/{category_id}
+  - PUT /categories/{category_id}
+  - DELETE /categories/{category_id}
 - Items
-	- GET /items
-	- POST /items
-	- GET /items/{item_id}
-	- PUT /items/{item_id}
-	- DELETE /items/{item_id}
-	- POST /items/{item_id}/categories
-	- GET /items/{item_id}/categories
-	- GET /items/{item_id}/image
-	- POST /items/{item_id}/image
-	- DELETE /items/{item_id}/image
+  - GET /items
+  - POST /items
+  - GET /items/{item_id}
+  - PUT /items/{item_id}
+  - DELETE /items/{item_id}
+  - POST /items/{item_id}/categories
+  - GET /items/{item_id}/categories
+  - GET /items/{item_id}/image
+  - POST /items/{item_id}/image
+  - DELETE /items/{item_id}/image
 - Transactions
-	- GET /transactions
-	- GET /transactions/export?format=csv|pdf
-	- POST /transactions
-	- GET /transactions/{transaction_id}
-	- PUT /transactions/{transaction_id}
-	- POST /transactions/{transaction_id}/cancel
-	- POST /transactions/{transaction_id}/complete
-	- POST /transactions/{transaction_id}/document
-	- GET /transactions/{transaction_id}/document
-	- DELETE /transactions/{transaction_id}/document
+  - GET /transactions
+  - GET /transactions/export?format=csv|pdf
+  - POST /transactions
+  - GET /transactions/{transaction_id}
+  - PUT /transactions/{transaction_id}
+  - POST /transactions/{transaction_id}/cancel
+  - POST /transactions/{transaction_id}/complete
+  - POST /transactions/{transaction_id}/document
+  - GET /transactions/{transaction_id}/document
+  - DELETE /transactions/{transaction_id}/document
 - Health/debug
-	- GET /health
-	- GET /db-check
-	- POST /test-user (debug)
-	- GET /debug/settings (debug)
+  - GET /health
+  - GET /db-check
+  - POST /test-user (debug)
+  - GET /debug/settings (debug)
 
-## Seguridad y autorizacion
+## Security and authorization
 
-- Autenticacion Bearer JWT (OAuth2PasswordBearer)
-- Login bloqueado para usuarios inactivos
-- Control de acceso por rol:
-	- ADMIN: control total de empresa/sedes/usuarios
-	- MANAGER: gestion operativa (items, categorias, operaciones)
-	- EMPLOYEE: acceso operativo con restricciones
-- Reglas de visibilidad por sede:
-	- usuarios con sede asignada trabajan con alcance de su sede (segun endpoint)
-- Reglas de actividad:
-	- endpoints protegidos validan user.is_active
+- Bearer JWT authentication (OAuth2PasswordBearer)
+- Login is blocked for inactive users
+- Role-based access control:
+  - ADMIN: full company/branch/user control
+  - MANAGER: operational management (items, categories, transactions)
+  - EMPLOYEE: restricted operational access
+- Branch visibility rules:
+  - users assigned to a branch operate within that branch scope (depending on endpoint)
+- Activity rules:
+  - protected endpoints validate user.is_active
 
-## Ficheros y media
+## Files and media
 
-- Carpeta base: media
-- Imagenes de articulos: media/items/{company_id}
-	- formatos: jpg, png, webp, heic, heif, avif
-	- limite: 5 MB
-- Documentos de operaciones: media/transactions/{company_id}
-	- formatos: PDF, Word, Excel, CSV, TXT, imagenes
-	- limite: 10 MB
-- HEIC/HEIF/AVIF se convierten a WebP al guardar
+- Base folder: media
+- Item images: media/items/{company_id}
+  - formats: jpg, png, webp, heic, heif, avif
+  - limit: 5 MB
+- Transaction documents: media/transactions/{company_id}
+  - formats: PDF, Word, Excel, CSV, TXT, images
+  - limit: 10 MB
+- HEIC/HEIF/AVIF files are converted to WebP when stored
 
-## Exportaciones
+## Exports
 
-- CSV y PDF en GET /transactions/export
-- Solo ADMIN y MANAGER pueden exportar
-- Se aplican los mismos filtros de listado
-- Limites internos de exportacion para evitar cargas excesivas
-- PDF usa WeasyPrint y mantiene una ruta fallback para entornos sin dependencias nativas
+- CSV and PDF in GET /transactions/export
+- Only ADMIN and MANAGER can export
+- Uses the same filters as the transaction list endpoint
+- Internal export limits to avoid excessive loads
+- PDF uses WeasyPrint and keeps a fallback path for environments without native dependencies
 
-## Requisitos previos
+## Prerequisites
 
 - Python 3.9+
-- MySQL en ejecucion
+- Running MySQL instance
 
-## Configuracion de entorno
+## Environment configuration
 
-Crear archivo .env en la raiz del proyecto.
+Create a .env file in the project root.
 
-Variables consumidas por la aplicacion (app/core/config.py):
+Variables consumed by the application (app/core/config.py):
 
 - app_name
 - env
@@ -186,7 +188,7 @@ Variables consumidas por la aplicacion (app/core/config.py):
 - secret_key
 - access_token_expire_minutes
 
-Variables utilizadas por Alembic (alembic/env.py):
+Variables used by Alembic (alembic/env.py):
 
 - DB_USER
 - DB_PASSWORD
@@ -194,7 +196,7 @@ Variables utilizadas por Alembic (alembic/env.py):
 - DB_PORT
 - DB_NAME
 
-Ejemplo minimo de .env compatible con ambos:
+Minimal .env example compatible with both:
 
 ```env
 app_name=TFG Inventory Backend
@@ -216,48 +218,48 @@ secret_key=change_this_secret
 access_token_expire_minutes=60
 ```
 
-## Puesta en marcha local
+## Local setup
 
-1. Crear entorno virtual
+1. Create virtual environment
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 ```
 
-2. Instalar dependencias
+2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Aplicar migraciones
+3. Apply migrations
 
 ```bash
 alembic upgrade head
 ```
 
-4. Ejecutar servidor
+4. Run server
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-5. Abrir documentacion
+5. Open documentation
 
 - http://localhost:8000/docs
 
 ## Tests
 
-La suite usa SQLite en memoria para aislamiento y rapidez (tests/conftest.py), creando esquema desde Base.metadata.
+The test suite uses in-memory SQLite for isolation and speed (tests/conftest.py), creating the schema from Base.metadata.
 
-Ejecutar todos los tests:
+Run all tests:
 
 ```bash
 pytest
 ```
 
-Ejecutar modulos concretos (ejemplos):
+Run specific modules (examples):
 
 ```bash
 pytest tests/api/test_auth_login.py
@@ -265,25 +267,25 @@ pytest tests/api/test_transaction_export_contract.py
 pytest tests/services/test_transaction_export_pdf_html.py
 ```
 
-Cobertura funcional destacada en tests:
+Highlighted functional coverage:
 
-- login y usuario actual
-- CRUD de empresa, usuarios, sedes
-- estados activos/inactivos (usuarios y sedes)
-- proteccion de endpoints para usuarios inactivos
-- listado avanzado de items
-- CRUD y flujo de operaciones
-- contrato de exportacion CSV/PDF
+- login and current user endpoint
+- company, user, and branch CRUD
+- active/inactive status behavior (users and branches)
+- protected endpoint behavior for inactive users
+- advanced item listing
+- transaction CRUD and flow
+- CSV/PDF export contract
 
-## Notas de desarrollo
+## Development notes
 
-- CORS permitido para frontend local en http://localhost:5173
-- El servicio expone endpoints de debug que no deberian habilitarse en produccion
-- Los codigos de error de negocio se devuelven como detail (por ejemplo: INSUFFICIENT_ROLE, USER_INACTIVE, ITEM_NOT_FOUND)
+- CORS is enabled for local frontend at http://localhost:5173
+- The service exposes debug endpoints that should not be enabled in production
+- Business error codes are returned in detail (for example: INSUFFICIENT_ROLE, USER_INACTIVE, ITEM_NOT_FOUND)
 
-## Autor
+## Author
 
 Mateo Sarria Franco de Sarabia
 
-Trabajo de Fin de Grado - Grado en Ingenieria de Tecnologias y Servicios de Telecomunicacion
+Final Degree Project - Bachelor's Degree in Telecommunication Technologies and Services Engineering
 
