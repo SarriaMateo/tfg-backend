@@ -43,7 +43,7 @@ def list_transactions(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     search: Optional[str] = Query(None),
-    order_by: Literal["created_at", "total_items"] = Query("created_at"),
+    order_by: Literal["last_event_at", "total_items"] = Query("last_event_at"),
     order_desc: bool = Query(True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -58,12 +58,12 @@ def list_transactions(
     - status: Filter by status (PENDING, TRANSIT, CANCELLED, COMPLETED)
     - performed_by: Filter by user who performed action
     - item_id: Filter by item in transaction lines
-    - start_date: Filter transactions created on/after this date
-    - end_date: Filter transactions created on/before this date
+    - start_date: Filter transactions by last event date on/after this date
+    - end_date: Filter transactions by last event date on/before this date
     - search: Search in item names and SKUs
     
     Ordering:
-    - order_by: "created_at" or "total_items"
+    - order_by: "last_event_at" or "total_items"
     - order_desc: True for descending, False for ascending
     """
     transactions, total = TransactionService.list_transactions(
@@ -109,7 +109,7 @@ def export_transactions(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     search: Optional[str] = Query(None),
-    order_by: Literal["created_at", "total_items"] = Query("created_at"),
+    order_by: Literal["last_event_at", "total_items"] = Query("last_event_at"),
     order_desc: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)

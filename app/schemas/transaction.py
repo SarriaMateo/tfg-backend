@@ -48,7 +48,7 @@ class TransactionResponse(BaseModel):
     id: int
     operation_type: OperationType
     status: TransactionStatus
-    created_at: datetime
+    last_event_at: Optional[datetime]
     description: Optional[str]
     has_document: bool
     branch_id: int
@@ -65,6 +65,7 @@ class TransactionDetailResponse(BaseModel):
     operation_type: OperationType
     status: TransactionStatus
     created_at: datetime
+    last_event_at: Optional[datetime]
     description: Optional[str]
     has_document: bool
     branch_id: int

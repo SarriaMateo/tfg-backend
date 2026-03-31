@@ -24,7 +24,7 @@ class TransactionRepository:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         search: Optional[str] = None,
-        order_by: str = "created_at",
+        order_by: str = "last_event_at",
         order_desc: bool = True
     ) -> List[Transaction]:
         """
@@ -76,11 +76,11 @@ class TransactionRepository:
 
         if start_date is not None:
             start_datetime = datetime.combine(start_date, time.min)
-            query = query.filter(Transaction.created_at >= start_datetime)
+            query = query.filter(Transaction.last_event_at >= start_datetime)
 
         if end_date is not None:
             end_datetime = datetime.combine(end_date, time.max)
-            query = query.filter(Transaction.created_at <= end_datetime)
+            query = query.filter(Transaction.last_event_at <= end_datetime)
 
         query = query.distinct()
 
@@ -88,7 +88,7 @@ class TransactionRepository:
             query = query.outerjoin(TransactionLine).group_by(Transaction.id)
             order_column = func.count(TransactionLine.id)
         else:
-            order_column = Transaction.created_at
+            order_column = Transaction.last_event_at
 
         if order_desc:
             query = query.order_by(order_column.desc() if order_by != "total_items" else desc(order_column))
@@ -126,7 +126,7 @@ class TransactionRepository:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         search: Optional[str] = None,
-        order_by: str = "created_at",
+        order_by: str = "last_event_at",
         order_desc: bool = True
     ) -> Tuple[List[Transaction], int]:
         """
@@ -143,7 +143,7 @@ class TransactionRepository:
         - search: Optional, search in item names and SKUs
         
         Ordering:
-        - order_by: "created_at" or "total_items"
+        - order_by: "last_event_at" or "total_items"
         - order_desc: True for descending, False for ascending
         """
         # Base query: join with branch to filter by company
@@ -197,11 +197,11 @@ class TransactionRepository:
 
         if start_date is not None:
             start_datetime = datetime.combine(start_date, time.min)
-            query = query.filter(Transaction.created_at >= start_datetime)
+            query = query.filter(Transaction.last_event_at >= start_datetime)
 
         if end_date is not None:
             end_datetime = datetime.combine(end_date, time.max)
-            query = query.filter(Transaction.created_at <= end_datetime)
+            query = query.filter(Transaction.last_event_at <= end_datetime)
         
         # Remove duplicates from joins
         query = query.distinct()
@@ -215,7 +215,7 @@ class TransactionRepository:
             query = query.outerjoin(TransactionLine).group_by(Transaction.id)
             order_column = func.count(TransactionLine.id)
         else:
-            order_column = Transaction.created_at
+            order_column = Transaction.last_event_at
 
         if order_desc:
             query = query.order_by(order_column.desc() if order_by != "total_items" else desc(order_column))

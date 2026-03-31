@@ -141,7 +141,8 @@ class TransactionService:
             created_by = TransactionService._get_created_by_name(transaction, user_map)
             operation_label = TransactionService.OPERATION_TYPE_LABELS.get(transaction.operation_type, "-")
             status_label = TransactionService.STATUS_LABELS.get(transaction.status, "-")
-            created_at_label = TransactionService._format_datetime_for_export(transaction.created_at)
+            event_datetime = transaction.last_event_at or transaction.created_at
+            created_at_label = TransactionService._format_datetime_for_export(event_datetime)
             description = (transaction.description or "").strip() or "-"
             group_class = "pdf-group-odd" if transaction_index % 2 == 0 else "pdf-group-even"
 
@@ -317,7 +318,8 @@ class TransactionService:
             created_by = TransactionService._get_created_by_name(transaction, user_map)
             operation_label = TransactionService.OPERATION_TYPE_LABELS.get(transaction.operation_type, "-")
             status_label = TransactionService.STATUS_LABELS.get(transaction.status, "-")
-            created_at_label = TransactionService._format_datetime_for_export(transaction.created_at)
+            event_datetime = transaction.last_event_at or transaction.created_at
+            created_at_label = TransactionService._format_datetime_for_export(event_datetime)
             description = transaction.description or ""
             group_class = "pdf-group-odd" if transaction_index % 2 == 0 else "pdf-group-even"
 
@@ -592,13 +594,34 @@ class TransactionService:
             )
             db.add(stock_movement)
 
-        event = TransactionEvent(
+        TransactionService._register_transaction_event(
+            db=db,
+            transaction=transaction,
             action_type=ActionType.COMPLETED,
-            timestamp=madrid_now(),
-            transaction_id=transaction.id,
-            performed_by=performed_by
+            performed_by=performed_by,
         )
-        TransactionRepository.create_event(db, event)
+
+    @staticmethod
+    def _register_transaction_event(
+        db: Session,
+        transaction: Transaction,
+        action_type: ActionType,
+        performed_by: int,
+        event_metadata: Optional[dict] = None,
+    ) -> TransactionEvent:
+        """Create a transaction event and sync transactions.last_event_at."""
+        event_timestamp = madrid_now()
+        event = TransactionEvent(
+            action_type=action_type,
+            timestamp=event_timestamp,
+            transaction_id=transaction.id,
+            performed_by=performed_by,
+            event_metadata=event_metadata,
+        )
+
+        transaction.last_event_at = event_timestamp
+        TransactionRepository.update(db, transaction)
+        return TransactionRepository.create_event(db, event)
 
     @staticmethod
     def _send_transfer_in_place(
@@ -641,13 +664,12 @@ class TransactionService:
             )
             db.add(stock_movement)
 
-        event = TransactionEvent(
+        TransactionService._register_transaction_event(
+            db=db,
+            transaction=transaction,
             action_type=ActionType.SENT,
-            timestamp=madrid_now(),
-            transaction_id=transaction.id,
-            performed_by=performed_by
+            performed_by=performed_by,
         )
-        TransactionRepository.create_event(db, event)
 
     @staticmethod
     def _receive_transfer_in_place(
@@ -679,13 +701,12 @@ class TransactionService:
             )
             db.add(stock_movement)
 
-        event = TransactionEvent(
+        TransactionService._register_transaction_event(
+            db=db,
+            transaction=transaction,
             action_type=ActionType.COMPLETED,
-            timestamp=madrid_now(),
-            transaction_id=transaction.id,
-            performed_by=performed_by
+            performed_by=performed_by,
         )
-        TransactionRepository.create_event(db, event)
 
     @staticmethod
     def _validate_user_can_access_branch(current_user: User, branch_id: int, db: Session) -> None:
@@ -1228,13 +1249,12 @@ class TransactionService:
             TransactionRepository.create_line(db, line)
         
         # Create CREATED event
-        event = TransactionEvent(
+        TransactionService._register_transaction_event(
+            db=db,
+            transaction=transaction,
             action_type=ActionType.CREATED,
-            timestamp=madrid_now(),
-            transaction_id=transaction.id,
-            performed_by=current_user.id
+            performed_by=current_user.id,
         )
-        TransactionRepository.create_event(db, event)
 
         if transaction_data.auto_complete:
             TransactionService._complete_transaction_in_place(
@@ -1347,14 +1367,13 @@ class TransactionService:
         
         # Create EDITED event only if there were actual changes
         if changes:
-            event = TransactionEvent(
+            TransactionService._register_transaction_event(
+                db=db,
+                transaction=transaction,
                 action_type=ActionType.EDITED,
-                timestamp=madrid_now(),
-                transaction_id=transaction.id,
                 performed_by=current_user.id,
-                event_metadata=changes
+                event_metadata=changes,
             )
-            TransactionRepository.create_event(db, event)
 
         if transaction_data.auto_complete:
             db.flush()
@@ -1424,14 +1443,13 @@ class TransactionService:
         if cancel_reason:
             metadata = {"reason": cancel_reason}
         
-        event = TransactionEvent(
+        TransactionService._register_transaction_event(
+            db=db,
+            transaction=transaction,
             action_type=ActionType.CANCELLED,
-            timestamp=madrid_now(),
-            transaction_id=transaction.id,
             performed_by=current_user.id,
-            event_metadata=metadata
+            event_metadata=metadata,
         )
-        TransactionRepository.create_event(db, event)
         
         TransactionRepository.commit(db)
         
@@ -1547,7 +1565,7 @@ class TransactionService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         search: Optional[str] = None,
-        order_by: str = "created_at",
+        order_by: str = "last_event_at",
         order_desc: bool = True
     ) -> Tuple[List[Transaction], int]:
         """
@@ -1592,7 +1610,7 @@ class TransactionService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         search: Optional[str] = None,
-        order_by: str = "created_at",
+        order_by: str = "last_event_at",
         order_desc: bool = True
     ) -> tuple[bytes, str, str]:
         """

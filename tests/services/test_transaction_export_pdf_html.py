@@ -40,6 +40,7 @@ def _transaction(
         operation_type=operation_type,
         status=status,
         created_at=created_at,
+        last_event_at=created_at,
         description=description,
         branch=SimpleNamespace(name=branch_name),
         destination_branch=SimpleNamespace(name=destination_branch_name) if destination_branch_name else None,

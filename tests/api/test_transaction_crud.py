@@ -2164,19 +2164,22 @@ async def test_list_transactions_filter_by_date_range(
         operation_type=OperationType.IN,
         status=TransactionStatus.PENDING,
         branch_id=branch.id,
-        created_at=base_date - timedelta(days=5)
+        created_at=base_date - timedelta(days=5),
+        last_event_at=base_date - timedelta(days=5)
     )
     tx_in_range = Transaction(
         operation_type=OperationType.IN,
         status=TransactionStatus.PENDING,
         branch_id=branch.id,
-        created_at=base_date - timedelta(days=2)
+        created_at=base_date - timedelta(days=2),
+        last_event_at=base_date - timedelta(days=2)
     )
     tx_new = Transaction(
         operation_type=OperationType.IN,
         status=TransactionStatus.PENDING,
         branch_id=branch.id,
-        created_at=base_date
+        created_at=base_date,
+        last_event_at=base_date
     )
 
     db_session.add_all([tx_old, tx_in_range, tx_new])

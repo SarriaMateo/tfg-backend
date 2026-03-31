@@ -45,6 +45,7 @@ class Transaction(Base):
         default=TransactionStatus.PENDING
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=madrid_now)
+    last_event_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     document_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     document_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

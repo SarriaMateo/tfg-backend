@@ -82,6 +82,7 @@ def export_contract_data(db_session):
         operation_type=OperationType.IN,
         status=TransactionStatus.PENDING,
         created_at=now - timedelta(days=2),
+        last_event_at=now - timedelta(days=2),
         description="Entrada sede A",
         branch_id=branch_a.id,
     )
@@ -89,6 +90,7 @@ def export_contract_data(db_session):
         operation_type=OperationType.OUT,
         status=TransactionStatus.PENDING,
         created_at=now - timedelta(days=1),
+        last_event_at=now - timedelta(days=1),
         description="Salida sede B",
         branch_id=branch_b.id,
     )
@@ -96,6 +98,7 @@ def export_contract_data(db_session):
         operation_type=OperationType.TRANSFER,
         status=TransactionStatus.TRANSIT,
         created_at=now,
+        last_event_at=now,
         description="Traspaso hacia sede A",
         branch_id=branch_b.id,
         destination_branch_id=branch_a.id,
@@ -341,7 +344,10 @@ async def test_export_contract_filters_by_search(client, export_contract_data):
 async def test_export_contract_filters_by_date_range(client, export_contract_data):
     admin = export_contract_data["users"]["admin"]
     token = _token_for(admin)
-    start_date, end_date = _dates_for_fixture()
+    tx_b = export_contract_data["transactions"]["b"]
+    tx_to_a = export_contract_data["transactions"]["to_a"]
+    start_date = tx_b.last_event_at.date().isoformat()
+    end_date = tx_to_a.last_event_at.date().isoformat()
 
     response = await client.get(
         f"/api/v1/transactions/export?format=csv&start_date={start_date}&end_date={end_date}",
@@ -421,6 +427,7 @@ async def test_export_contract_rejects_export_exceeding_line_limit(client, db_se
         operation_type=OperationType.IN,
         status=TransactionStatus.PENDING,
         created_at=datetime.utcnow(),
+        last_event_at=datetime.utcnow(),
         description="Bulk transaction",
         branch_id=branch_a.id,
     )
@@ -472,6 +479,7 @@ async def test_export_contract_rejects_pdf_export_exceeding_line_limit(client, d
         operation_type=OperationType.IN,
         status=TransactionStatus.PENDING,
         created_at=datetime.utcnow(),
+        last_event_at=datetime.utcnow(),
         description="Bulk transaction for PDF",
         branch_id=branch_a.id,
     )
