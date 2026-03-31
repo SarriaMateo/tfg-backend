@@ -593,18 +593,21 @@ class TransactionService:
                 detail="TRANSACTION_NOT_COMPLETABLE"
             )
 
-        if transaction.operation_type == OperationType.OUT:
+        if transaction.operation_type in (OperationType.OUT, OperationType.ADJUSTMENT):
+            item_deltas: dict[int, Decimal] = {}
             for line in transaction.lines:
-                current_stock = StockMovementRepository.get_stock_by_item_and_branch(
-                    db, line.item_id, transaction.branch_id
-                )
+                if transaction.operation_type == OperationType.OUT:
+                    delta = -line.quantity
+                else:
+                    delta = line.quantity
 
-                if current_stock - line.quantity < 0:
-                    item = ItemRepository.get_by_id(db, line.item_id)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"INSUFFICIENT_STOCK_FOR_ITEM_{item.sku}"
-                    )
+                item_deltas[line.item_id] = item_deltas.get(line.item_id, Decimal("0.000")) + delta
+
+            TransactionService._validate_projected_stock_non_negative(
+                db=db,
+                branch_id=transaction.branch_id,
+                item_deltas=item_deltas,
+            )
 
         transaction.status = TransactionStatus.COMPLETED
         TransactionRepository.update(db, transaction)
@@ -633,6 +636,31 @@ class TransactionService:
             action_type=ActionType.COMPLETED,
             performed_by=performed_by,
         )
+
+    @staticmethod
+    def _validate_projected_stock_non_negative(
+        db: Session,
+        branch_id: int,
+        item_deltas: dict[int, Decimal],
+    ) -> None:
+        """Ensure projected stock after applying item deltas never goes below zero."""
+        for item_id, delta in item_deltas.items():
+            if delta >= 0:
+                continue
+
+            current_stock = StockMovementRepository.get_stock_by_item_and_branch(
+                db,
+                item_id,
+                branch_id,
+            )
+
+            if current_stock + delta < 0:
+                item = ItemRepository.get_by_id(db, item_id)
+                item_identifier = item.sku if item else str(item_id)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"INSUFFICIENT_STOCK_FOR_ITEM_{item_identifier}",
+                )
 
     @staticmethod
     def _register_transaction_event(
@@ -671,17 +699,17 @@ class TransactionService:
                 detail="TRANSFER_DESTINATION_REQUIRED"
             )
 
+        item_deltas: dict[int, Decimal] = {}
         for line in transaction.lines:
-            current_stock = StockMovementRepository.get_stock_by_item_and_branch(
-                db, line.item_id, transaction.branch_id
+            item_deltas[line.item_id] = (
+                item_deltas.get(line.item_id, Decimal("0.000")) - line.quantity
             )
 
-            if current_stock - line.quantity < 0:
-                item = ItemRepository.get_by_id(db, line.item_id)
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"INSUFFICIENT_STOCK_FOR_ITEM_{item.sku}"
-                )
+        TransactionService._validate_projected_stock_non_negative(
+            db=db,
+            branch_id=transaction.branch_id,
+            item_deltas=item_deltas,
+        )
 
         transaction.status = TransactionStatus.TRANSIT
         TransactionRepository.update(db, transaction)

@@ -716,6 +716,22 @@ async def test_create_adjustment_auto_completes_and_preserves_quantity_sign(
     branch = data["branches"][0]
     item = data["items"][1]  # KILOGRAM supports decimal quantities
 
+    seed_tx = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        branch_id=branch.id,
+    )
+    db_session.add(seed_tx)
+    db_session.flush()
+    db_session.add(StockMovement(
+        quantity=5,
+        movement_type=MovementType.IN,
+        item_id=item.id,
+        branch_id=branch.id,
+        transaction_id=seed_tx.id,
+    ))
+    db_session.commit()
+
     token = build_token(user)
 
     payload = {
@@ -745,6 +761,137 @@ async def test_create_adjustment_auto_completes_and_preserves_quantity_sign(
     assert len(movements) == 1
     assert float(movements[0].quantity) == -2.5
     assert movements[0].movement_type == MovementType.ADJUSTMENT
+
+
+@pytest.mark.asyncio
+async def test_create_adjustment_auto_complete_insufficient_stock_fails(
+    client, company_with_transactions_data
+):
+    """Test ADJUSTMENT cannot reduce stock below zero when auto-completing."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][1]
+
+    token = build_token(user)
+
+    payload = {
+        "operation_type": "ADJUSTMENT",
+        "description": "Negative correction without stock",
+        "branch_id": branch.id,
+        "auto_complete": True,
+        "lines": [
+            {"quantity": -1.5, "item_id": item.id}
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert "INSUFFICIENT_STOCK" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_transaction_auto_complete_out_fails_with_repeated_item_aggregate(
+    client, db_session, company_with_transactions_data
+):
+    """Test OUT auto_complete validates aggregated quantity when same item appears multiple times."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    branch = data["branches"][0]
+    item = data["items"][0]
+
+    seed_tx = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        branch_id=branch.id,
+    )
+    db_session.add(seed_tx)
+    db_session.flush()
+    db_session.add(StockMovement(
+        quantity=10,
+        movement_type=MovementType.IN,
+        item_id=item.id,
+        branch_id=branch.id,
+        transaction_id=seed_tx.id,
+    ))
+    db_session.commit()
+
+    token = build_token(user)
+
+    payload = {
+        "operation_type": "OUT",
+        "description": "Repeated item OUT",
+        "branch_id": branch.id,
+        "auto_complete": True,
+        "lines": [
+            {"quantity": 6, "item_id": item.id},
+            {"quantity": 6, "item_id": item.id},
+        ],
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert "INSUFFICIENT_STOCK" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_transfer_auto_complete_fails_with_repeated_item_aggregate(
+    client, db_session, company_with_transactions_data
+):
+    """Test TRANSFER auto_complete validates aggregated quantity when same item appears multiple times."""
+    data = company_with_transactions_data
+    user = data["users"]["admin"]
+    source_branch = data["branches"][0]
+    destination_branch = data["branches"][1]
+    item = data["items"][0]
+
+    seed_tx = Transaction(
+        operation_type=OperationType.IN,
+        status=TransactionStatus.COMPLETED,
+        branch_id=source_branch.id,
+    )
+    db_session.add(seed_tx)
+    db_session.flush()
+    db_session.add(StockMovement(
+        quantity=10,
+        movement_type=MovementType.IN,
+        item_id=item.id,
+        branch_id=source_branch.id,
+        transaction_id=seed_tx.id,
+    ))
+    db_session.commit()
+
+    token = build_token(user)
+    payload = {
+        "operation_type": "TRANSFER",
+        "description": "Repeated item transfer",
+        "branch_id": source_branch.id,
+        "destination_branch_id": destination_branch.id,
+        "auto_complete": True,
+        "lines": [
+            {"quantity": 6, "item_id": item.id},
+            {"quantity": 6, "item_id": item.id},
+        ]
+    }
+
+    response = await client.post(
+        "/api/v1/transactions",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 400
+    assert "INSUFFICIENT_STOCK" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
