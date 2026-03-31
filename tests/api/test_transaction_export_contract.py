@@ -512,3 +512,100 @@ async def test_export_contract_rejects_pdf_export_exceeding_line_limit(client, d
 
     assert response.status_code == 400
     assert "EXPORT_EXCEEDS_LIMIT_10000" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query_param,invalid_id,expected_detail",
+    [
+        ("branch_id", 999999, "BRANCH_NOT_FOUND"),
+        ("performed_by", 999999, "USER_NOT_FOUND"),
+        ("item_id", 999999, "ITEM_NOT_FOUND"),
+    ],
+)
+async def test_export_contract_pdf_rejects_nonexistent_filter_entities(
+    client,
+    export_contract_data,
+    query_param,
+    invalid_id,
+    expected_detail,
+):
+    admin = export_contract_data["users"]["admin"]
+    token = _token_for(admin)
+
+    response = await client.get(
+        f"/api/v1/transactions/export?format=pdf&{query_param}={invalid_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == expected_detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query_param,entity_key,expected_detail",
+    [
+        ("branch_id", "branch", "BRANCH_NOT_FOUND"),
+        ("performed_by", "user", "USER_NOT_FOUND"),
+        ("item_id", "item", "ITEM_NOT_FOUND"),
+    ],
+)
+async def test_export_contract_pdf_rejects_filter_entities_from_other_company(
+    client,
+    db_session,
+    export_contract_data,
+    query_param,
+    entity_key,
+    expected_detail,
+):
+    admin = export_contract_data["users"]["admin"]
+    token = _token_for(admin)
+
+    foreign_company = Company(
+        name="Foreign Export Company",
+        email="foreign@company.com",
+        nif="87654321C",
+    )
+    db_session.add(foreign_company)
+    db_session.flush()
+
+    foreign_branch = Branch(
+        name="Foreign Branch",
+        address="Foreign Street",
+        company_id=foreign_company.id,
+        is_active=True,
+    )
+    foreign_user = User(
+        name="Foreign Admin",
+        username=f"foreign_admin_{query_param}",
+        hashed_password=hash_password("password123"),
+        role=Role.ADMIN,
+        is_active=True,
+        company_id=foreign_company.id,
+        branch_id=None,
+    )
+    foreign_item = Item(
+        name="Foreign Item",
+        sku=f"FOREIGN-{query_param}",
+        unit=Unit.UNIT,
+        is_active=True,
+        company_id=foreign_company.id,
+    )
+    db_session.add_all([foreign_branch, foreign_user, foreign_item])
+    db_session.commit()
+
+    foreign_entity_id_map = {
+        "branch": foreign_branch.id,
+        "user": foreign_user.id,
+        "item": foreign_item.id,
+    }
+    foreign_id = foreign_entity_id_map[entity_key]
+
+    response = await client.get(
+        f"/api/v1/transactions/export?format=pdf&{query_param}={foreign_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == expected_detail

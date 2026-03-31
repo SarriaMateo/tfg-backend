@@ -85,6 +85,39 @@ class TransactionService:
             )
 
     @staticmethod
+    def _validate_export_filter_entities(
+        db: Session,
+        company_id: int,
+        branch_id: Optional[int],
+        performed_by: Optional[int],
+        item_id: Optional[int],
+    ) -> None:
+        """Validate export filter entity ownership to prevent cross-company data disclosure."""
+        if branch_id is not None:
+            branch = BranchRepository.get_by_id(db, branch_id)
+            if not branch or branch.company_id != company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="BRANCH_NOT_FOUND",
+                )
+
+        if performed_by is not None:
+            user = UserRepository.get_by_id(db, performed_by)
+            if not user or user.company_id != company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="USER_NOT_FOUND",
+                )
+
+        if item_id is not None:
+            item = ItemRepository.get_by_id(db, item_id)
+            if not item or item.company_id != company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="ITEM_NOT_FOUND",
+                )
+
+    @staticmethod
     def _format_decimal_for_export(value: Decimal) -> str:
         """
         Match frontend decimal formatting:
@@ -1627,6 +1660,14 @@ class TransactionService:
 
         if current_user.branch_id:
             branch_id = current_user.branch_id
+
+        TransactionService._validate_export_filter_entities(
+            db=db,
+            company_id=current_user.company_id,
+            branch_id=branch_id,
+            performed_by=performed_by,
+            item_id=item_id,
+        )
 
         transactions = TransactionRepository.list_transactions_for_export(
             db=db,
