@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum as PyEnum
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Integer, String, Boolean, DateTime, ForeignKey, Enum as SAEnum, Numeric
+from sqlalchemy import Integer, String, Boolean, DateTime, ForeignKey, Enum as SAEnum, Numeric, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.db.models.association import item_categories
@@ -45,6 +45,12 @@ class Item(Base):
     brand: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     image_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    low_stock_threshold: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0")
+    )
     company_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("companies.id"),

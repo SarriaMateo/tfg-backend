@@ -25,6 +25,7 @@ class ItemCreate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     price: Optional[Decimal] = Field(None, ge=0, max_digits=10, decimal_places=2)
     brand: Optional[str] = Field(None, max_length=100)
+    low_stock_threshold: int = Field(0, ge=0)
 
     @field_validator("sku")
     @classmethod
@@ -48,6 +49,7 @@ class ItemUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     price: Optional[Decimal] = Field(None, ge=0, max_digits=10, decimal_places=2)
     brand: Optional[str] = Field(None, max_length=100)
+    low_stock_threshold: Optional[int] = Field(None, ge=0)
     is_active: Optional[bool] = None
 
     @field_validator("sku")
@@ -75,6 +77,7 @@ class ItemResponse(BaseModel):
     description: Optional[str]
     price: Optional[Decimal]
     brand: Optional[str]
+    low_stock_threshold: int
     has_image: bool
     company_id: int
 
@@ -103,6 +106,7 @@ class ItemWithStock(BaseModel):
     description: Optional[str]
     price: Optional[Decimal]
     brand: Optional[str]
+    low_stock_threshold: int
     has_image: bool
     company_id: int
     stock_by_branch: List[BranchStock] = Field(default_factory=list)

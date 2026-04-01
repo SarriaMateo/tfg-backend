@@ -74,6 +74,7 @@ class ItemService:
             description=item_data.description,
             price=item_data.price,
             brand=item_data.brand,
+            low_stock_threshold=item_data.low_stock_threshold,
             company_id=current_user.company_id
         )
 
@@ -172,6 +173,13 @@ class ItemService:
             item.price = item_data.price
         if "brand" in sent_fields:
             item.brand = item_data.brand
+        if "low_stock_threshold" in sent_fields:
+            if item_data.low_stock_threshold is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="LOW_STOCK_THRESHOLD_REQUIRED"
+                )
+            item.low_stock_threshold = item_data.low_stock_threshold
         
         if item_data.is_active is not None:
             item.is_active = item_data.is_active
@@ -519,6 +527,7 @@ class ItemService:
                 description=item.description,
                 price=item.price,
                 brand=item.brand,
+                low_stock_threshold=item.low_stock_threshold,
                 has_image=bool(item.image_url),
                 company_id=item.company_id,
                 stock_by_branch=stock_by_branch
