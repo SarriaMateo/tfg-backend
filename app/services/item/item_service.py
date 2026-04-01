@@ -12,7 +12,7 @@ from app.repositories.item_repository import ItemRepository
 from app.repositories.category_repository import CategoryRepository
 from app.repositories.branch_repository import BranchRepository
 from app.repositories.stock_movement_repository import StockMovementRepository
-from app.schemas.item import ItemCreate, ItemUpdate, ItemWithStock, BranchStock
+from app.schemas.item import ItemCreate, ItemUpdate, ItemResponse, BranchStock
 from app.schemas.common import PaginatedResponse
 from app.core.file_handler import ItemImageHandler
 from app.services.user.user_service import UserService
@@ -36,6 +36,56 @@ class ItemService:
     def _validate_image_read_permission(current_user: User) -> None:
         """Allow image read operations to any active user."""
         UserService.validate_user_active(current_user)
+
+    @staticmethod
+    def _build_item_response_with_stock(
+        db: Session,
+        item: Item,
+        current_user: User
+    ) -> ItemResponse:
+        """Build a stock-aware item response for a single item."""
+        branches = BranchRepository.get_by_company_id(db, current_user.company_id)
+        branch_ids = [branch.id for branch in branches]
+
+        stock_dict = {}
+        if branch_ids:
+            stock_dict = StockMovementRepository.get_stock_by_items_and_branches(
+                db, [item.id], branch_ids
+            )
+
+        stock_by_branch = []
+        for branch in branches:
+            stock_by_branch.append(BranchStock(
+                branch_id=branch.id,
+                branch_name=branch.name,
+                stock=stock_dict.get((item.id, branch.id), Decimal("0.000"))
+            ))
+
+        return ItemResponse(
+            id=item.id,
+            name=item.name,
+            sku=item.sku,
+            unit=item.unit.value,
+            created_at=item.created_at,
+            is_active=item.is_active,
+            description=item.description,
+            price=item.price,
+            brand=item.brand,
+            low_stock_threshold=item.low_stock_threshold,
+            has_image=bool(item.image_url),
+            company_id=item.company_id,
+            stock_by_branch=stock_by_branch,
+        )
+
+    @staticmethod
+    def get_item_response_with_stock(
+        db: Session,
+        item_id: int,
+        current_user: User
+    ) -> ItemResponse:
+        """Get a single item response including stock by branch."""
+        item = ItemService.get_item(db, item_id, current_user)
+        return ItemService._build_item_response_with_stock(db, item, current_user)
 
     @staticmethod
     def create_item(
@@ -410,7 +460,7 @@ class ItemService:
         search: Optional[str] = None,
         order_by: str = "created_at",
         order_desc: bool = True
-    ) -> PaginatedResponse[ItemWithStock]:
+    ) -> PaginatedResponse[ItemResponse]:
         """
         List items with filters, search, pagination, sorting and stock calculation.
         
@@ -517,7 +567,7 @@ class ItemService:
                     stock=stock
                 ))
 
-            item_with_stock = ItemWithStock(
+            item_with_stock = ItemResponse(
                 id=item.id,
                 name=item.name,
                 sku=item.sku,

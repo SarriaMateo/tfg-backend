@@ -67,24 +67,6 @@ class ItemUpdate(BaseModel):
         return value
 
 
-class ItemResponse(BaseModel):
-    id: int
-    name: str
-    sku: str
-    unit: ItemUnit
-    created_at: datetime
-    is_active: bool
-    description: Optional[str]
-    price: Optional[Decimal]
-    brand: Optional[str]
-    low_stock_threshold: int
-    has_image: bool
-    company_id: int
-
-    class Config:
-        from_attributes = True
-
-
 class BranchStock(BaseModel):
     """Stock information for a specific branch"""
     branch_id: int
@@ -95,8 +77,7 @@ class BranchStock(BaseModel):
         from_attributes = True
 
 
-class ItemWithStock(BaseModel):
-    """Item with stock information per branch"""
+class ItemResponse(BaseModel):
     id: int
     name: str
     sku: str
@@ -113,3 +94,5 @@ class ItemWithStock(BaseModel):
 
     class Config:
         from_attributes = True
+
+

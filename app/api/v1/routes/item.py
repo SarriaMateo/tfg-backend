@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, Literal
 
 from app.db.session import get_db
-from app.schemas.item import ItemCreate, ItemUpdate, ItemResponse, ItemWithStock
+from app.schemas.item import ItemCreate, ItemUpdate, ItemResponse
 from app.schemas.common import PaginatedResponse
 from app.schemas.category import CategoryResponse
 from app.core.security import get_current_user, require_roles
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/items", tags=["items"])
 
 @router.get(
     "",
-    response_model=PaginatedResponse[ItemWithStock],
+    response_model=PaginatedResponse[ItemResponse],
     status_code=status.HTTP_200_OK
 )
 def list_items(
@@ -66,7 +66,7 @@ async def create_item(
     """
     new_item = ItemService.create_item(db, item_data, current_user)
     ItemRepository.commit(db)
-    return new_item
+    return ItemService.get_item_response_with_stock(db, new_item.id, current_user)
 
 
 @router.get(
@@ -82,8 +82,7 @@ def get_item(
     """
     Get an item by ID. All users can view items from their company.
     """
-    item = ItemService.get_item(db, item_id, current_user)
-    return item
+    return ItemService.get_item_response_with_stock(db, item_id, current_user)
 
 
 @router.put(
@@ -106,7 +105,7 @@ async def update_item(
     """
     updated_item = ItemService.update_item(db, item_id, item_data, current_user)
     ItemRepository.commit(db)
-    return updated_item
+    return ItemService.get_item_response_with_stock(db, updated_item.id, current_user)
 
 
 @router.delete(
@@ -145,7 +144,7 @@ def assign_categories(
     """
     item = ItemService.assign_categories(db, item_id, category_ids, current_user)
     ItemRepository.commit(db)
-    return item
+    return ItemService.get_item_response_with_stock(db, item.id, current_user)
 
 
 @router.get(
@@ -207,7 +206,7 @@ async def upload_item_image(
         image_content_type=image.content_type,
     )
     ItemRepository.commit(db)
-    return item
+    return ItemService.get_item_response_with_stock(db, item.id, current_user)
 
 
 @router.delete(
@@ -223,4 +222,4 @@ def delete_item_image(
     """Delete the image associated to an item."""
     item = ItemService.delete_item_image(db, item_id, current_user)
     ItemRepository.commit(db)
-    return item
+    return ItemService.get_item_response_with_stock(db, item.id, current_user)
