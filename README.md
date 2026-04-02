@@ -118,6 +118,9 @@ Layered architecture:
   - GET /items/{item_id}/image
   - POST /items/{item_id}/image
   - DELETE /items/{item_id}/image
+- Dashboard
+  - GET /dashboard/stock-risk
+  - GET /dashboard/activity
 - Transactions
   - GET /transactions
   - GET /transactions/export?format=csv|pdf
