@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from pydantic import BaseModel, Field
 
@@ -54,5 +54,5 @@ class DashboardActivityBranchMetrics(BaseModel):
 
 
 class DashboardActivityResponse(BaseModel):
-    period_days: Optional[int] = Field(default=None, ge=1)
+    period: Literal["day", "week", "month", "total"] = "day"
     data: List[DashboardActivityBranchMetrics]

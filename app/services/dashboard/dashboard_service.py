@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional
 
@@ -247,19 +247,42 @@ class DashboardService:
         return transaction.last_event_at or transaction.created_at
 
     @staticmethod
+    def _get_activity_period_start(period: str, now_dt: datetime) -> Optional[datetime]:
+        """Return the inclusive start datetime for the requested activity period."""
+        current_date = now_dt.date()
+
+        if period == "day":
+            return datetime.combine(current_date, datetime.min.time())
+
+        if period == "week":
+            week_start = current_date - timedelta(days=current_date.weekday())
+            return datetime.combine(week_start, datetime.min.time())
+
+        if period == "month":
+            month_start = date(current_date.year, current_date.month, 1)
+            return datetime.combine(month_start, datetime.min.time())
+
+        if period == "total":
+            return None
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="INVALID_ACTIVITY_PERIOD",
+        )
+
+    @staticmethod
     def _is_transaction_in_period(
         transaction: Transaction,
         now_dt: datetime,
-        period_days: Optional[int],
+        period: str,
     ) -> bool:
-        """Check whether transaction belongs to the requested natural-day period."""
-        if period_days is None:
+        """Check whether transaction belongs to the requested activity window."""
+        start_dt = DashboardService._get_activity_period_start(period, now_dt)
+        if start_dt is None:
             return True
 
         reference_dt = DashboardService._get_transaction_reference_datetime(transaction)
-        cutoff_date = now_dt.date() - timedelta(days=period_days - 1)
-        reference_date = reference_dt.date()
-        return cutoff_date <= reference_date <= now_dt.date()
+        return start_dt <= reference_dt <= now_dt
 
     @staticmethod
     def _count_branch_line_flows(
@@ -292,7 +315,7 @@ class DashboardService:
         db: Session,
         current_user: User,
         branch_id: Optional[int] = None,
-        period_days: Optional[int] = None,
+        period: str = "day",
     ) -> DashboardActivityResponse:
         """
         Return dashboard activity metrics by active branch scope.
@@ -326,7 +349,7 @@ class DashboardService:
             outgoing_lines_count = 0
 
             for transaction in transactions:
-                if not DashboardService._is_transaction_in_period(transaction, now_dt, period_days):
+                if not DashboardService._is_transaction_in_period(transaction, now_dt, period):
                     continue
 
                 operations_count += 1
@@ -351,6 +374,6 @@ class DashboardService:
             )
 
         return DashboardActivityResponse(
-            period_days=period_days,
+            period=period,
             data=response_data,
         )

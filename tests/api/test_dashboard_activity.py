@@ -106,6 +106,9 @@ def dashboard_activity_data(db_session):
     # Historical operation outside 3-day window.
     add_tx(OperationType.IN, branch_a.id, None, TransactionStatus.COMPLETED, datetime(2026, 4, 1, 10, 0, 0), ["9.000"], [item_1])
 
+    # Historical operation outside the month window.
+    add_tx(OperationType.OUT, branch_a.id, None, TransactionStatus.COMPLETED, datetime(2026, 3, 31, 10, 0, 0), ["1.000"], [item_1])
+
     db_session.commit()
 
     return {
@@ -130,7 +133,7 @@ def _token_for_user(user: User) -> str:
 
 
 @pytest.mark.asyncio
-async def test_dashboard_activity_branch_with_period_counts(client, dashboard_activity_data, monkeypatch):
+async def test_dashboard_activity_branch_day_default_counts(client, dashboard_activity_data, monkeypatch):
     monkeypatch.setattr(
         "app.services.dashboard.dashboard_service.madrid_now",
         lambda: datetime(2026, 4, 10, 12, 0, 0),
@@ -140,18 +143,70 @@ async def test_dashboard_activity_branch_with_period_counts(client, dashboard_ac
     branch_a_id = dashboard_activity_data["branch_a"].id
 
     response = await client.get(
-        f"/api/v1/dashboard/activity?branch_id={branch_a_id}&period_days=3",
+        f"/api/v1/dashboard/activity?branch_id={branch_a_id}",
         headers={"Authorization": f"Bearer {token}"},
     )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["period_days"] == 3
+    assert payload["period"] == "day"
     assert len(payload["data"]) == 1
 
     metrics = payload["data"][0]
     assert metrics["operations_count"] == 5
     assert metrics["incoming_transaction_lines_count"] == 2
+    assert metrics["outgoing_transaction_lines_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_dashboard_activity_week_counts(client, dashboard_activity_data, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.dashboard.dashboard_service.madrid_now",
+        lambda: datetime(2026, 4, 10, 12, 0, 0),
+    )
+
+    token = _token_for_user(dashboard_activity_data["admin_user"])
+    branch_a_id = dashboard_activity_data["branch_a"].id
+
+    response = await client.get(
+        f"/api/v1/dashboard/activity?branch_id={branch_a_id}&period=week",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    metrics = response.json()["data"][0]
+
+    assert response.json()["period"] == "week"
+    assert metrics["operations_count"] == 5
+    assert metrics["incoming_transaction_lines_count"] == 2
+    assert metrics["outgoing_transaction_lines_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_dashboard_activity_month_counts_exclude_previous_month(
+    client,
+    dashboard_activity_data,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "app.services.dashboard.dashboard_service.madrid_now",
+        lambda: datetime(2026, 4, 10, 12, 0, 0),
+    )
+
+    token = _token_for_user(dashboard_activity_data["admin_user"])
+    branch_a_id = dashboard_activity_data["branch_a"].id
+
+    response = await client.get(
+        f"/api/v1/dashboard/activity?branch_id={branch_a_id}&period=month",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    metrics = response.json()["data"][0]
+
+    assert response.json()["period"] == "month"
+    assert metrics["operations_count"] == 6
+    assert metrics["incoming_transaction_lines_count"] == 3
     assert metrics["outgoing_transaction_lines_count"] == 3
 
 
@@ -170,16 +225,17 @@ async def test_dashboard_activity_without_period_includes_historical_operations(
     branch_a_id = dashboard_activity_data["branch_a"].id
 
     response = await client.get(
-        f"/api/v1/dashboard/activity?branch_id={branch_a_id}",
+        f"/api/v1/dashboard/activity?branch_id={branch_a_id}&period=total",
         headers={"Authorization": f"Bearer {token}"},
     )
 
     assert response.status_code == 200
     metrics = response.json()["data"][0]
 
-    assert metrics["operations_count"] == 6
+    assert response.json()["period"] == "total"
+    assert metrics["operations_count"] == 7
     assert metrics["incoming_transaction_lines_count"] == 3
-    assert metrics["outgoing_transaction_lines_count"] == 3
+    assert metrics["outgoing_transaction_lines_count"] == 4
 
 
 @pytest.mark.asyncio

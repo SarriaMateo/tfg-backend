@@ -2,6 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
+from typing import Literal
 
 from app.core.security import get_current_user
 from app.db.models.user import User
@@ -37,7 +38,7 @@ def get_stock_risk_dashboard(
 )
 def get_activity_dashboard(
     branch_id: Optional[int] = Query(None, ge=1),
-    period_days: Optional[int] = Query(None, ge=1),
+    period: Literal["day", "week", "month", "total"] = Query("day"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -46,5 +47,5 @@ def get_activity_dashboard(
         db=db,
         current_user=current_user,
         branch_id=branch_id,
-        period_days=period_days,
+        period=period,
     )
