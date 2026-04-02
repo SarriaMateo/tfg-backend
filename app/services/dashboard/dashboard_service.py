@@ -1,18 +1,22 @@
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.datetime_utils import madrid_now
 from app.db.models.item import Item
 from app.db.models.transaction import Transaction, TransactionStatus
+from app.db.models.transaction_line import TransactionLine
 from app.db.models.user import User
 from app.repositories.branch_repository import BranchRepository
 from app.repositories.item_repository import ItemRepository
 from app.repositories.stock_movement_repository import StockMovementRepository
 from app.schemas.dashboard import (
     DashboardBranchScope,
+    DashboardActivityBranchMetrics,
+    DashboardActivityResponse,
     DashboardStockAlertItem,
     DashboardStockBuckets,
     DashboardStockRiskBranchMetrics,
@@ -20,6 +24,8 @@ from app.schemas.dashboard import (
     DashboardStaleTransaction,
 )
 from app.services.dashboard.dashboard_rules import (
+    LineFlowDirection,
+    classify_transaction_line_direction,
     days_since_last_event,
     is_stale_pending_or_transit,
 )
@@ -234,3 +240,117 @@ class DashboardService:
             )
 
         return DashboardStockRiskResponse(data=response_data)
+
+    @staticmethod
+    def _get_transaction_reference_datetime(transaction: Transaction) -> datetime:
+        """Use last_event_at when available, otherwise fallback to created_at."""
+        return transaction.last_event_at or transaction.created_at
+
+    @staticmethod
+    def _is_transaction_in_period(
+        transaction: Transaction,
+        now_dt: datetime,
+        period_days: Optional[int],
+    ) -> bool:
+        """Check whether transaction belongs to the requested natural-day period."""
+        if period_days is None:
+            return True
+
+        reference_dt = DashboardService._get_transaction_reference_datetime(transaction)
+        cutoff_date = now_dt.date() - timedelta(days=period_days - 1)
+        reference_date = reference_dt.date()
+        return cutoff_date <= reference_date <= now_dt.date()
+
+    @staticmethod
+    def _count_branch_line_flows(
+        transaction_lines: List[TransactionLine],
+        transaction: Transaction,
+        target_branch_id: int,
+    ) -> tuple[int, int]:
+        """Count incoming and outgoing lines for one branch in one transaction."""
+        incoming_count = 0
+        outgoing_count = 0
+
+        for line in transaction_lines:
+            direction = classify_transaction_line_direction(
+                operation_type=transaction.operation_type,
+                quantity=float(line.quantity),
+                origin_branch_id=transaction.branch_id,
+                destination_branch_id=transaction.destination_branch_id,
+                target_branch_id=target_branch_id,
+            )
+
+            if direction == LineFlowDirection.INCOMING:
+                incoming_count += 1
+            elif direction == LineFlowDirection.OUTGOING:
+                outgoing_count += 1
+
+        return incoming_count, outgoing_count
+
+    @staticmethod
+    def get_activity_metrics(
+        db: Session,
+        current_user: User,
+        branch_id: Optional[int] = None,
+        period_days: Optional[int] = None,
+    ) -> DashboardActivityResponse:
+        """
+        Return dashboard activity metrics by active branch scope.
+
+        Includes:
+        - Operations count
+        - Incoming transaction lines count
+        - Outgoing transaction lines count
+        """
+        UserService.validate_user_active(current_user)
+
+        branches = DashboardService._resolve_active_scope_branches(
+            db=db,
+            current_user=current_user,
+            branch_id=branch_id,
+        )
+
+        now_dt = madrid_now()
+        response_data: List[DashboardActivityBranchMetrics] = []
+
+        for branch in branches:
+            transactions = db.query(Transaction).options(
+                joinedload(Transaction.lines)
+            ).filter(
+                (Transaction.branch_id == branch.id)
+                | (Transaction.destination_branch_id == branch.id)
+            ).all()
+
+            operations_count = 0
+            incoming_lines_count = 0
+            outgoing_lines_count = 0
+
+            for transaction in transactions:
+                if not DashboardService._is_transaction_in_period(transaction, now_dt, period_days):
+                    continue
+
+                operations_count += 1
+                incoming_increment, outgoing_increment = DashboardService._count_branch_line_flows(
+                    transaction_lines=transaction.lines,
+                    transaction=transaction,
+                    target_branch_id=branch.id,
+                )
+                incoming_lines_count += incoming_increment
+                outgoing_lines_count += outgoing_increment
+
+            response_data.append(
+                DashboardActivityBranchMetrics(
+                    branch=DashboardBranchScope(
+                        branch_id=branch.id,
+                        branch_name=branch.name,
+                    ),
+                    operations_count=operations_count,
+                    incoming_transaction_lines_count=incoming_lines_count,
+                    outgoing_transaction_lines_count=outgoing_lines_count,
+                )
+            )
+
+        return DashboardActivityResponse(
+            period_days=period_days,
+            data=response_data,
+        )
