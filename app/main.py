@@ -16,6 +16,7 @@ from app.api.v1.routes.user import router as user_router
 from app.api.v1.routes.item import router as item_router
 from app.api.v1.routes.category import router as category_router
 from app.api.v1.routes.transaction import router as transaction_router
+from app.api.v1.routes.dashboard import router as dashboard_router
 
 # Import all models to register them with Base.metadata
 from app.db.models.company import Company
@@ -51,6 +52,7 @@ app.include_router(user_router, prefix="/api/v1")
 app.include_router(item_router, prefix="/api/v1")
 app.include_router(category_router, prefix="/api/v1")
 app.include_router(transaction_router, prefix="/api/v1")
+app.include_router(dashboard_router, prefix="/api/v1")
 
 # Debug to check settings - NF1
 @app.get("/debug/settings")
