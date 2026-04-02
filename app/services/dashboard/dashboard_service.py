@@ -91,7 +91,7 @@ class DashboardService:
         """Compute stock buckets and alert items for one branch."""
         zero_count = 0
         low_count = 0
-        high_count = 0
+        healthy_count = 0
         alert_items: List[DashboardStockAlertItem] = []
 
         for item in items:
@@ -125,13 +125,13 @@ class DashboardService:
                 )
                 continue
 
-            high_count += 1
+            healthy_count += 1
 
         return (
             DashboardStockBuckets(
                 zero_stock_items=zero_count,
                 low_stock_items=low_count,
-                high_stock_items=high_count,
+                healthy_stock_items=healthy_count,
             ),
             alert_items,
         )
@@ -183,7 +183,7 @@ class DashboardService:
 
         Includes:
         - Pending and transit operations count
-        - Stock buckets (zero / low / high)
+        - Stock buckets (zero / low / healthy)
         - Low and zero stock item list
         - Stale pending/transit transaction list
         """

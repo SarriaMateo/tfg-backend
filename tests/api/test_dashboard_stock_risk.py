@@ -205,7 +205,7 @@ async def test_dashboard_stock_risk_branch_scope_counts(client, dashboard_stock_
     assert branch_data["stock_buckets"] == {
         "zero_stock_items": 1,
         "low_stock_items": 1,
-        "high_stock_items": 2,
+        "healthy_stock_items": 2,
     }
 
     stock_statuses = {item["stock_status"] for item in branch_data["stock_alert_items"]}

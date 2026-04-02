@@ -12,7 +12,7 @@ class DashboardBranchScope(BaseModel):
 class DashboardStockBuckets(BaseModel):
     zero_stock_items: int = Field(ge=0)
     low_stock_items: int = Field(ge=0)
-    high_stock_items: int = Field(ge=0)
+    healthy_stock_items: int = Field(ge=0)
 
 
 class DashboardStockAlertItem(BaseModel):
