@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.datetime_utils import madrid_now
 from app.db.models.item import Item
-from app.db.models.transaction import Transaction, TransactionStatus
+from app.db.models.transaction import OperationType, Transaction, TransactionStatus
 from app.db.models.transaction_line import TransactionLine
 from app.db.models.user import User
 from app.repositories.branch_repository import BranchRepository
@@ -289,10 +289,22 @@ class DashboardService:
         transaction_lines: List[TransactionLine],
         transaction: Transaction,
         target_branch_id: int,
-    ) -> tuple[int, int]:
-        """Count incoming and outgoing lines for one branch in one transaction."""
+    ) -> tuple[int, int, dict[str, int], dict[str, int]]:
+        """Count incoming and outgoing lines plus operation-type breakdowns."""
         incoming_count = 0
         outgoing_count = 0
+        incoming_by_operation = {
+            OperationType.IN.value: 0,
+            OperationType.OUT.value: 0,
+            OperationType.TRANSFER.value: 0,
+            OperationType.ADJUSTMENT.value: 0,
+        }
+        outgoing_by_operation = {
+            OperationType.IN.value: 0,
+            OperationType.OUT.value: 0,
+            OperationType.TRANSFER.value: 0,
+            OperationType.ADJUSTMENT.value: 0,
+        }
 
         for line in transaction_lines:
             direction = classify_transaction_line_direction(
@@ -305,10 +317,12 @@ class DashboardService:
 
             if direction == LineFlowDirection.INCOMING:
                 incoming_count += 1
+                incoming_by_operation[transaction.operation_type.value] += 1
             elif direction == LineFlowDirection.OUTGOING:
                 outgoing_count += 1
+                outgoing_by_operation[transaction.operation_type.value] += 1
 
-        return incoming_count, outgoing_count
+        return incoming_count, outgoing_count, incoming_by_operation, outgoing_by_operation
 
     @staticmethod
     def get_activity_metrics(
@@ -321,9 +335,10 @@ class DashboardService:
         Return dashboard activity metrics by active branch scope.
 
         Includes:
-        - Operations count
-        - Incoming transaction lines count
-        - Outgoing transaction lines count
+        - Operations count (status COMPLETED only)
+        - Incoming transaction lines count (status COMPLETED only)
+        - Outgoing transaction lines count (status COMPLETED only)
+        - Incoming/outgoing transaction line breakdown by operation type
         """
         UserService.validate_user_active(current_user)
 
@@ -340,6 +355,7 @@ class DashboardService:
             transactions = db.query(Transaction).options(
                 joinedload(Transaction.lines)
             ).filter(
+                Transaction.status == TransactionStatus.COMPLETED,
                 (Transaction.branch_id == branch.id)
                 | (Transaction.destination_branch_id == branch.id)
             ).all()
@@ -347,19 +363,34 @@ class DashboardService:
             operations_count = 0
             incoming_lines_count = 0
             outgoing_lines_count = 0
+            incoming_by_operation = {
+                OperationType.IN.value: 0,
+                OperationType.OUT.value: 0,
+                OperationType.TRANSFER.value: 0,
+                OperationType.ADJUSTMENT.value: 0,
+            }
+            outgoing_by_operation = {
+                OperationType.IN.value: 0,
+                OperationType.OUT.value: 0,
+                OperationType.TRANSFER.value: 0,
+                OperationType.ADJUSTMENT.value: 0,
+            }
 
             for transaction in transactions:
                 if not DashboardService._is_transaction_in_period(transaction, now_dt, period):
                     continue
 
                 operations_count += 1
-                incoming_increment, outgoing_increment = DashboardService._count_branch_line_flows(
+                incoming_increment, outgoing_increment, incoming_breakdown, outgoing_breakdown = DashboardService._count_branch_line_flows(
                     transaction_lines=transaction.lines,
                     transaction=transaction,
                     target_branch_id=branch.id,
                 )
                 incoming_lines_count += incoming_increment
                 outgoing_lines_count += outgoing_increment
+                for operation_type in incoming_by_operation:
+                    incoming_by_operation[operation_type] += incoming_breakdown[operation_type]
+                    outgoing_by_operation[operation_type] += outgoing_breakdown[operation_type]
 
             response_data.append(
                 DashboardActivityBranchMetrics(
@@ -370,6 +401,8 @@ class DashboardService:
                     operations_count=operations_count,
                     incoming_transaction_lines_count=incoming_lines_count,
                     outgoing_transaction_lines_count=outgoing_lines_count,
+                    incoming_transaction_lines_by_operation=incoming_by_operation,
+                    outgoing_transaction_lines_by_operation=outgoing_by_operation,
                 )
             )
 

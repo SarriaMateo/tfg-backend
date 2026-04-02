@@ -51,6 +51,8 @@ class DashboardActivityBranchMetrics(BaseModel):
     operations_count: int = Field(ge=0)
     incoming_transaction_lines_count: int = Field(ge=0)
     outgoing_transaction_lines_count: int = Field(ge=0)
+    incoming_transaction_lines_by_operation: dict[str, int]
+    outgoing_transaction_lines_by_operation: dict[str, int]
 
 
 class DashboardActivityResponse(BaseModel):

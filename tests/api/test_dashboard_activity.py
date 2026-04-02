@@ -95,7 +95,7 @@ def dashboard_activity_data(db_session):
 
         return tx
 
-    # Recent activity (inside 3-day window when now is 2026-04-10).
+    # Recent activity for 2026-04-10 day window.
     add_tx(OperationType.IN, branch_a.id, None, TransactionStatus.COMPLETED, datetime(2026, 4, 10, 9, 0, 0), ["5.000"], [item_1])
     add_tx(OperationType.OUT, branch_a.id, None, TransactionStatus.COMPLETED, datetime(2026, 4, 10, 9, 5, 0), ["2.000"], [item_1])
     add_tx(OperationType.TRANSFER, branch_a.id, branch_b.id, TransactionStatus.TRANSIT, datetime(2026, 4, 10, 9, 10, 0), ["4.000"], [item_2])
@@ -153,9 +153,21 @@ async def test_dashboard_activity_branch_day_default_counts(client, dashboard_ac
     assert len(payload["data"]) == 1
 
     metrics = payload["data"][0]
-    assert metrics["operations_count"] == 5
+    assert metrics["operations_count"] == 4
     assert metrics["incoming_transaction_lines_count"] == 2
-    assert metrics["outgoing_transaction_lines_count"] == 3
+    assert metrics["outgoing_transaction_lines_count"] == 2
+    assert metrics["incoming_transaction_lines_by_operation"] == {
+        "IN": 1,
+        "OUT": 0,
+        "TRANSFER": 0,
+        "ADJUSTMENT": 1,
+    }
+    assert metrics["outgoing_transaction_lines_by_operation"] == {
+        "IN": 0,
+        "OUT": 1,
+        "TRANSFER": 0,
+        "ADJUSTMENT": 1,
+    }
 
 
 @pytest.mark.asyncio
@@ -177,9 +189,9 @@ async def test_dashboard_activity_week_counts(client, dashboard_activity_data, m
     metrics = response.json()["data"][0]
 
     assert response.json()["period"] == "week"
-    assert metrics["operations_count"] == 5
+    assert metrics["operations_count"] == 4
     assert metrics["incoming_transaction_lines_count"] == 2
-    assert metrics["outgoing_transaction_lines_count"] == 3
+    assert metrics["outgoing_transaction_lines_count"] == 2
 
 
 @pytest.mark.asyncio
@@ -205,13 +217,13 @@ async def test_dashboard_activity_month_counts_exclude_previous_month(
     metrics = response.json()["data"][0]
 
     assert response.json()["period"] == "month"
-    assert metrics["operations_count"] == 6
+    assert metrics["operations_count"] == 5
     assert metrics["incoming_transaction_lines_count"] == 3
-    assert metrics["outgoing_transaction_lines_count"] == 3
+    assert metrics["outgoing_transaction_lines_count"] == 2
 
 
 @pytest.mark.asyncio
-async def test_dashboard_activity_without_period_includes_historical_operations(
+async def test_dashboard_activity_total_includes_historical_operations(
     client,
     dashboard_activity_data,
     monkeypatch,
@@ -233,9 +245,9 @@ async def test_dashboard_activity_without_period_includes_historical_operations(
     metrics = response.json()["data"][0]
 
     assert response.json()["period"] == "total"
-    assert metrics["operations_count"] == 7
+    assert metrics["operations_count"] == 6
     assert metrics["incoming_transaction_lines_count"] == 3
-    assert metrics["outgoing_transaction_lines_count"] == 4
+    assert metrics["outgoing_transaction_lines_count"] == 3
 
 
 @pytest.mark.asyncio
@@ -251,7 +263,7 @@ async def test_dashboard_activity_without_branch_returns_active_branches_only(
 
     token = _token_for_user(dashboard_activity_data["admin_user"])
     response = await client.get(
-        "/api/v1/dashboard/activity?period_days=3",
+        "/api/v1/dashboard/activity?period=week",
         headers={"Authorization": f"Bearer {token}"},
     )
 
