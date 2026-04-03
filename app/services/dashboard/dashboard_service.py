@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.datetime_utils import madrid_now
+from app.db.models.branch import Branch
 from app.db.models.item import Item
 from app.db.models.transaction import OperationType, Transaction, TransactionStatus
 from app.db.models.transaction_line import TransactionLine
@@ -150,6 +151,16 @@ class DashboardService:
             | (Transaction.destination_branch_id == branch_id),
         ).all()
 
+        branch_ids = {tx.branch_id for tx in candidates}
+        branch_ids.update(
+            tx.destination_branch_id for tx in candidates if tx.destination_branch_id is not None
+        )
+
+        branch_names_by_id = {}
+        if branch_ids:
+            branches = db.query(Branch).filter(Branch.id.in_(branch_ids)).all()
+            branch_names_by_id = {branch.id: branch.name for branch in branches}
+
         stale_transactions: List[DashboardStaleTransaction] = []
 
         for tx in candidates:
@@ -165,7 +176,13 @@ class DashboardService:
                     last_event_at=last_event,
                     days_since_last_event=days_since_last_event(last_event, now_dt),
                     origin_branch_id=tx.branch_id,
+                    origin_branch_name=branch_names_by_id.get(tx.branch_id, ""),
                     destination_branch_id=tx.destination_branch_id,
+                    destination_branch_name=(
+                        branch_names_by_id.get(tx.destination_branch_id)
+                        if tx.destination_branch_id is not None
+                        else None
+                    ),
                 )
             )
 

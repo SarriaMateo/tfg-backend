@@ -31,7 +31,9 @@ class DashboardStaleTransaction(BaseModel):
     last_event_at: datetime
     days_since_last_event: int = Field(ge=0)
     origin_branch_id: int = Field(gt=0)
+    origin_branch_name: str
     destination_branch_id: Optional[int] = None
+    destination_branch_name: Optional[str] = None
 
 
 class DashboardStockRiskBranchMetrics(BaseModel):
