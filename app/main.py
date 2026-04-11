@@ -6,8 +6,12 @@ os.environ["PASSLIB_BCRYPT_TRUNCATE_ERROR"] = "false"
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.exception_handlers import validation_exception_handler
+from app.core.rate_limit import limiter
 from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.company import router as company_router
 from app.api.v1.routes.auth import router as auth_router
@@ -31,9 +35,12 @@ from app.db.models.transaction_event import TransactionEvent
 from app.db.models.transaction_line import TransactionLine
 
 app = FastAPI(title=settings.app_name)
+app.state.limiter = limiter
 
 # Register exception handlers
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,12 +60,4 @@ app.include_router(item_router, prefix="/api/v1")
 app.include_router(category_router, prefix="/api/v1")
 app.include_router(transaction_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
-
-# Debug to check settings - NF1
-@app.get("/debug/settings")
-def debug_settings():
-    return {
-        "app_name": settings.app_name,
-        "env": settings.env,
-    }
 
