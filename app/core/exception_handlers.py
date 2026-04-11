@@ -2,6 +2,7 @@ from fastapi import Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -108,4 +109,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": jsonable_encoder(exc.errors())}
+    )
+
+
+async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded):
+    """Return rate-limit errors using the project's standard error-code shape."""
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"detail": "TOO_MANY_REQUESTS"}
     )
