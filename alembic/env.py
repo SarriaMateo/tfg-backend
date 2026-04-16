@@ -1,14 +1,14 @@
 from logging.config import fileConfig
 import os
-from dotenv import load_dotenv
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+from app.core.env_loader import load_environment
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from the selected env profile file.
+load_environment()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

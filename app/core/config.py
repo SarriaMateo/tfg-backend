@@ -1,4 +1,6 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.core.env_loader import resolve_env_file
 
 class Settings(BaseSettings):
     app_name: str
@@ -13,7 +15,9 @@ class Settings(BaseSettings):
     secret_key: str
     access_token_expire_minutes: int
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(
+        env_file=resolve_env_file(),
+        env_file_encoding="utf-8",
+    )
 
 settings = Settings()

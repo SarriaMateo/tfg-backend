@@ -1,8 +1,11 @@
 venv/
 __pycache__/
 .env
+.env.local
+.env.cloud
+.env.*
+!.env.example
 .pytest_cache/
-.idea/
 .vscode/
 *.DS_Store
 C4_ARCHITECTURE_COMPONENT_BACKEND.md
