@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, UploadFile, File, status, Query, Request
-from starlette.responses import FileResponse
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import Optional, Literal, List
@@ -332,10 +331,7 @@ def get_document(
     Get the document file for a transaction.
     Returns the document file if it exists, 404 otherwise.
     """
-    document_path, media_type, download_name = TransactionService.get_document(
-        db, transaction_id, current_user
-    )
-    return FileResponse(path=document_path, media_type=media_type, filename=download_name)
+    return TransactionService.get_document(db, transaction_id, current_user)
 
 
 @router.delete(

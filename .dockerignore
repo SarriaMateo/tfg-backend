@@ -18,7 +18,7 @@ env/
 
 .env
 .env.local
-!.env.cloud
+.env.cloud
 !.env.example
 
 tests/

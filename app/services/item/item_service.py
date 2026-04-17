@@ -4,6 +4,7 @@ from typing import Optional
 from pathlib import Path
 from decimal import Decimal
 import math
+from fastapi.responses import Response
 
 from app.db.models.item import Item, Unit
 from app.db.models.user import User, Role
@@ -348,10 +349,10 @@ class ItemService:
         db: Session,
         item_id: int,
         current_user: User
-    ) -> tuple[Path, str, str]:
+    ) -> Response:
         """
-        Get image file path for an item with security validation.
-        Returns a tuple of (file_path: Path, media_type: str, download_name: str)
+        Get image response for an item with security validation.
+        Returns a FileResponse in local mode or a StreamingResponse in cloud mode.
         
         Validations:
         - User must be authenticated
@@ -371,29 +372,7 @@ class ItemService:
                 detail="IMAGE_NOT_FOUND"
             )
         
-        # Get absolute path
-        image_path = ItemImageHandler.get_absolute_path(item.image_url)
-        
-        # Verify file exists
-        if not image_path or not image_path.exists():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="IMAGE_NOT_FOUND"
-            )
-        
-        # Determine media type based on file extension
-        import mimetypes
-        media_type, _ = mimetypes.guess_type(str(image_path))
-        if not media_type:
-            media_type = "application/octet-stream"
-        
-        if item.image_name:
-            download_name = item.image_name
-        else:
-            extension = image_path.suffix.lower()
-            download_name = f"unknown{extension}" if extension else "unknown"
-
-        return image_path, media_type, download_name
+        return ItemImageHandler.build_download_response(item.image_url, item.image_name)
 
     @staticmethod
     def upload_item_image(

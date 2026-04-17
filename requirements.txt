@@ -32,3 +32,6 @@ weasyprint>=62.0
 # Image conversion
 Pillow>=10.3.0
 pillow-heif>=0.16.0
+
+# Cloud Storage
+google-cloud-storage>=2.19.0

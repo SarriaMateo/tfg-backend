@@ -5,6 +5,14 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 from fastapi import HTTPException, status
+from fastapi.responses import FileResponse, StreamingResponse
+
+from app.core.config import settings
+
+try:
+    from google.cloud import storage  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - dependency-managed at runtime
+    storage = None
 
 try:
     from PIL import Image, UnidentifiedImageError
@@ -22,6 +30,50 @@ except ImportError:  # pragma: no cover - dependency-managed at runtime
 # Base media directory
 MEDIA_ROOT = Path("media")
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+def _is_cloud_storage_enabled() -> bool:
+    return settings.env == "cloud"
+
+
+def _normalize_storage_key(relative_url: str) -> str:
+    normalized = relative_url.lstrip("/")
+    if normalized.startswith("media/"):
+        normalized = normalized[len("media/"):]
+    return normalized
+
+
+def _build_download_name(source_name: Optional[str], storage_key: str) -> str:
+    if source_name:
+        return source_name
+
+    extension = Path(storage_key).suffix.lower()
+    return f"unknown{extension}" if extension else "unknown"
+
+
+def _resolve_media_type(storage_key: str, content_type: Optional[str] = None) -> str:
+    if content_type:
+        return content_type
+
+    media_type, _ = mimetypes.guess_type(storage_key)
+    return media_type or "application/octet-stream"
+
+
+def _get_bucket():
+    if storage is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="CLOUD_STORAGE_UNAVAILABLE"
+        )
+
+    if not settings.gcs_bucket:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="GCS_BUCKET_NOT_CONFIGURED"
+        )
+
+    client = storage.Client()
+    return client.bucket(settings.gcs_bucket)
 
 if register_heif_opener is not None:
     register_heif_opener()
@@ -142,23 +194,29 @@ class ItemImageHandler:
         if cls.should_convert_to_webp(filename, content_type):
             final_file_content = cls._convert_to_webp(file_content)
 
-        # Create company-specific directory
-        company_dir = cls.UPLOAD_DIR / str(company_id)
-        company_dir.mkdir(parents=True, exist_ok=True)
-
         # Generate unique filename with UUID
         final_filename = cls.get_storage_filename(filename, content_type)
         file_ext = Path(final_filename).suffix.lower()
         unique_filename = f"{uuid4()}{file_ext}"
-        file_path = company_dir / unique_filename
+        relative_path = f"items/{company_id}/{unique_filename}"
 
-        # Save file to filesystem
-        with open(file_path, "wb") as f:
-            f.write(final_file_content)
+        if _is_cloud_storage_enabled():
+            blob = _get_bucket().blob(relative_path)
+            blob.upload_from_string(
+                final_file_content,
+                content_type=_resolve_media_type(relative_path, "image/webp" if file_ext == ".webp" else content_type or mimetypes.guess_type(final_filename)[0])
+            )
+        else:
+            # Create company-specific directory
+            company_dir = cls.UPLOAD_DIR / str(company_id)
+            company_dir.mkdir(parents=True, exist_ok=True)
+            file_path = company_dir / unique_filename
+
+            # Save file to filesystem
+            with open(file_path, "wb") as f:
+                f.write(final_file_content)
 
         # Return relative URL path for database storage
-        # Remove /media prefix since MEDIA_ROOT will be prepended when reading
-        relative_path = f"items/{company_id}/{unique_filename}"
         return relative_path
 
     @classmethod
@@ -169,9 +227,16 @@ class ItemImageHandler:
         if not image_url:
             return
 
+        storage_key = _normalize_storage_key(image_url)
+
+        if _is_cloud_storage_enabled():
+            blob = _get_bucket().blob(storage_key)
+            if blob.exists():
+                blob.delete()
+            return
+
         # Build absolute path from relative URL
-        # image_url format: "/media/items/{company_id}/{filename}"
-        file_path = MEDIA_ROOT / image_url.lstrip("/")
+        file_path = MEDIA_ROOT / storage_key
 
         if file_path.exists():
             file_path.unlink()
@@ -184,7 +249,55 @@ class ItemImageHandler:
         """
         if not relative_url:
             return None
-        return MEDIA_ROOT / relative_url.lstrip("/")
+        if _is_cloud_storage_enabled():
+            return None
+        return MEDIA_ROOT / _normalize_storage_key(relative_url)
+
+    @classmethod
+    def build_download_response(
+        cls,
+        relative_url: str,
+        download_name: Optional[str] = None
+    ):
+        if not relative_url:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="IMAGE_NOT_FOUND"
+            )
+
+        storage_key = _normalize_storage_key(relative_url)
+
+        if _is_cloud_storage_enabled():
+            blob = _get_bucket().blob(storage_key)
+            if not blob.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="IMAGE_NOT_FOUND"
+                )
+
+            blob_bytes = blob.download_as_bytes()
+            media_type = _resolve_media_type(storage_key, blob.content_type)
+            final_download_name = _build_download_name(download_name, storage_key)
+            return StreamingResponse(
+                iter([blob_bytes]),
+                media_type=media_type,
+                headers={"Content-Disposition": f'attachment; filename="{final_download_name}"'}
+            )
+
+        file_path = MEDIA_ROOT / storage_key
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="IMAGE_NOT_FOUND"
+            )
+
+        media_type, _ = mimetypes.guess_type(str(file_path))
+        final_download_name = _build_download_name(download_name, storage_key)
+        return FileResponse(
+            path=file_path,
+            media_type=media_type or "application/octet-stream",
+            filename=final_download_name,
+        )
 
 
 class TransactionDocumentHandler:
@@ -312,22 +425,29 @@ class TransactionDocumentHandler:
         if cls.should_convert_to_webp(filename, content_type):
             final_file_content = cls._convert_to_webp(file_content)
 
-        # Create company-specific directory
-        company_dir = cls.UPLOAD_DIR / str(company_id)
-        company_dir.mkdir(parents=True, exist_ok=True)
-
         # Generate unique filename with UUID
         final_filename = cls.get_storage_filename(filename, content_type)
         file_ext = Path(final_filename).suffix.lower()
         unique_filename = f"{uuid4()}{file_ext}"
-        file_path = company_dir / unique_filename
+        relative_path = f"transactions/{company_id}/{unique_filename}"
 
-        # Save file to filesystem
-        with open(file_path, "wb") as f:
-            f.write(final_file_content)
+        if _is_cloud_storage_enabled():
+            blob = _get_bucket().blob(relative_path)
+            blob.upload_from_string(
+                final_file_content,
+                content_type=_resolve_media_type(relative_path, "image/webp" if file_ext == ".webp" else content_type or mimetypes.guess_type(final_filename)[0])
+            )
+        else:
+            # Create company-specific directory
+            company_dir = cls.UPLOAD_DIR / str(company_id)
+            company_dir.mkdir(parents=True, exist_ok=True)
+            file_path = company_dir / unique_filename
+
+            # Save file to filesystem
+            with open(file_path, "wb") as f:
+                f.write(final_file_content)
 
         # Return relative URL path for database storage
-        relative_path = f"transactions/{company_id}/{unique_filename}"
         return relative_path
 
     @classmethod
@@ -338,8 +458,16 @@ class TransactionDocumentHandler:
         if not document_url:
             return
 
+        storage_key = _normalize_storage_key(document_url)
+
+        if _is_cloud_storage_enabled():
+            blob = _get_bucket().blob(storage_key)
+            if blob.exists():
+                blob.delete()
+            return
+
         # Build absolute path from relative URL
-        file_path = MEDIA_ROOT / document_url.lstrip("/")
+        file_path = MEDIA_ROOT / storage_key
 
         if file_path.exists():
             file_path.unlink()
@@ -352,4 +480,52 @@ class TransactionDocumentHandler:
         """
         if not relative_url:
             return None
-        return MEDIA_ROOT / relative_url.lstrip("/")
+        if _is_cloud_storage_enabled():
+            return None
+        return MEDIA_ROOT / _normalize_storage_key(relative_url)
+
+    @classmethod
+    def build_download_response(
+        cls,
+        relative_url: str,
+        download_name: Optional[str] = None
+    ):
+        if not relative_url:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="DOCUMENT_NOT_FOUND"
+            )
+
+        storage_key = _normalize_storage_key(relative_url)
+
+        if _is_cloud_storage_enabled():
+            blob = _get_bucket().blob(storage_key)
+            if not blob.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="DOCUMENT_NOT_FOUND"
+                )
+
+            blob_bytes = blob.download_as_bytes()
+            media_type = _resolve_media_type(storage_key, blob.content_type)
+            final_download_name = _build_download_name(download_name, storage_key)
+            return StreamingResponse(
+                iter([blob_bytes]),
+                media_type=media_type,
+                headers={"Content-Disposition": f'attachment; filename="{final_download_name}"'}
+            )
+
+        file_path = MEDIA_ROOT / storage_key
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="DOCUMENT_NOT_FOUND"
+            )
+
+        media_type, _ = mimetypes.guess_type(str(file_path))
+        final_download_name = _build_download_name(download_name, storage_key)
+        return FileResponse(
+            path=file_path,
+            media_type=media_type or "application/octet-stream",
+            filename=final_download_name,
+        )

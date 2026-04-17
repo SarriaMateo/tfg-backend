@@ -8,6 +8,7 @@ from html import escape as html_escape
 import csv
 import io
 import os
+from fastapi.responses import Response
 
 from app.db.models.transaction import Transaction, OperationType, TransactionStatus
 from app.db.models.transaction_line import TransactionLine
@@ -1813,10 +1814,10 @@ class TransactionService:
         db: Session,
         transaction_id: int,
         current_user: User
-    ) -> tuple[Path, str, str]:
+    ) -> Response:
         """
-        Get the document file path and metadata for a transaction.
-        Similar to ItemService.get_item_image.
+        Get the document response for a transaction.
+        Returns a FileResponse in local mode or a StreamingResponse in cloud mode.
         """
         UserService.validate_user_active(current_user)
         
@@ -1838,25 +1839,10 @@ class TransactionService:
                 detail="DOCUMENT_NOT_FOUND"
             )
         
-        file_path = TransactionDocumentHandler.get_absolute_path(transaction.document_url)
-        if not file_path or not file_path.exists():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="DOCUMENT_NOT_FOUND"
-            )
-        
-        import mimetypes
-        media_type, _ = mimetypes.guess_type(str(file_path))
-        if not media_type:
-            media_type = "application/octet-stream"
-
-        if transaction.document_name:
-            download_name = transaction.document_name
-        else:
-            extension = file_path.suffix.lower()
-            download_name = f"unknown{extension}" if extension else "unknown"
-
-        return file_path, media_type, download_name
+        return TransactionDocumentHandler.build_download_response(
+            transaction.document_url,
+            transaction.document_name,
+        )
 
     @staticmethod
     def delete_document(

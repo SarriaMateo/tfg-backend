@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, status, Query, UploadFile, File
-from starlette.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional, Literal
 
@@ -178,8 +177,7 @@ def get_item_image(
     Requires authentication and company ownership verification.
     Returns the image file if it exists, 404 otherwise.
     """
-    image_path, media_type, download_name = ItemService.get_item_image(db, item_id, current_user)
-    return FileResponse(path=image_path, media_type=media_type, filename=download_name)
+    return ItemService.get_item_image(db, item_id, current_user)
 
 
 @router.post(

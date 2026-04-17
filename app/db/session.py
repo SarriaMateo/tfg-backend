@@ -7,13 +7,7 @@ from app.core.config import settings
 from sqlalchemy.orm import Session
 from fastapi import Depends
 
-DATABASE_URL = (
-    f"mysql+pymysql://{settings.db_user}:"
-    f"{settings.db_password}@"
-    f"{settings.db_host}:"
-    f"{settings.db_port}/"
-    f"{settings.db_name}"
-)
+DATABASE_URL = settings.database_url
 
 engine = create_engine(DATABASE_URL, echo=False)
 

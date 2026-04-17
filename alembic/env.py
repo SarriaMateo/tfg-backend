@@ -1,10 +1,10 @@
 from logging.config import fileConfig
-import os
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+from app.core.config import settings
 from app.core.env_loader import load_environment
 
 # Load environment variables from the selected env profile file.
@@ -65,17 +65,8 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    # Build SQLAlchemy URL from environment variables
-    db_user = os.getenv("DB_USER", "user")
-    db_password = os.getenv("DB_PASSWORD", "password")
-    db_host = os.getenv("DB_HOST", "localhost")
-    db_port = os.getenv("DB_PORT", "3306")
-    db_name = os.getenv("DB_NAME", "inventory_db")
-    
-    sqlalchemy_url = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-    
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = sqlalchemy_url
+    configuration["sqlalchemy.url"] = settings.database_url
     
     connectable = engine_from_config(
         configuration,
