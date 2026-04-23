@@ -1,0 +1,70 @@
+name: Deploy Backend to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: project-cfa2e14e-a4b0-4f55-9e8
+  REGION: europe-southwest1
+  SERVICE: backend-service
+  IMAGE: europe-southwest1-docker.pkg.dev/project-cfa2e14e-a4b0-4f55-9e8/backend-repo/backend:latest
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # AUTH (Workload Identity)
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/118030769338/locations/global/workloadIdentityPools/github-pool/providers/GitHub
+          service_account: github-actions-deployer@project-cfa2e14e-a4b0-4f55-9e8.iam.gserviceaccount.com
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Docker auth
+      - name: Configure Docker
+        run: gcloud auth configure-docker europe-southwest1-docker.pkg.dev
+
+      # Build
+      - name: Build image
+        run: |
+          docker build --platform linux/amd64 -t $IMAGE .
+
+      # Push
+      - name: Push image
+        run: |
+          docker push $IMAGE
+
+      # Deploy Cloud Run
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE \
+            --image $IMAGE \
+            --platform managed \
+            --region $REGION \
+            --allow-unauthenticated \
+            --port 8080 \
+            --add-cloudsql-instances project-cfa2e14e-a4b0-4f55-9e8:europe-southwest1:inventario-mysql \
+            --env-vars-file .env.cloud.json
+
+      # Alembic migrations
+      - name: Run migrations
+        run: |
+          gcloud run jobs create alembic-job \
+            --image $IMAGE \
+            --region $REGION \
+            --command "alembic" \
+            --args "upgrade","head" \
+            --set-cloudsql-instances project-cfa2e14e-a4b0-4f55-9e8:europe-southwest1:inventario-mysql \
+            --set-env-vars-file .env.cloud.json \
+            --max-retries 1 || true
+
+          gcloud run jobs execute alembic-job --region $REGION --wait
