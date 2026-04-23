@@ -57,7 +57,8 @@ jobs:
             --allow-unauthenticated \
             --port 8080 \
             --add-cloudsql-instances project-cfa2e14e-a4b0-4f55-9e8:europe-southwest1:inventario-mysql \
-            --env-vars-file .env.cloud.json
+            --set-env-vars APP_NAME=Itematic,ENV=cloud,GCS_BUCKET=itematic_media,DB_PORT=3307,ACCESS_TOKEN_EXPIRE_MINUTES=120 \
+            --set-secrets SECRET_KEY=SECRET_KEY:latest,DB_PASSWORD=DB_PASSWORD:latest,DB_USER=DB_USER:latest,DB_NAME=DB_NAME:latest,DB_HOST=DB_HOST:latest
 
       # Alembic migrations
       - name: Run migrations
@@ -68,7 +69,8 @@ jobs:
             --command "alembic" \
             --args "upgrade","head" \
             --set-cloudsql-instances project-cfa2e14e-a4b0-4f55-9e8:europe-southwest1:inventario-mysql \
-            --set-env-vars-file .env.cloud.json \
+            --set-env-vars APP_NAME=Itematic,ENV=cloud,GCS_BUCKET=itematic_media,DB_PORT=3307,ACCESS_TOKEN_EXPIRE_MINUTES=120 \
+            --set-secrets SECRET_KEY=SECRET_KEY:latest,DB_PASSWORD=DB_PASSWORD:latest,DB_USER=DB_USER:latest,DB_NAME=DB_NAME:latest,DB_HOST=DB_HOST:latest \
             --max-retries 1 || true
 
           gcloud run jobs execute alembic-job --region $REGION --wait
