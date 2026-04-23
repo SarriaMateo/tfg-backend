@@ -46,7 +46,10 @@ app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://itematic.mateosarria.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,4 +65,3 @@ app.include_router(item_router, prefix="/api/v1")
 app.include_router(category_router, prefix="/api/v1")
 app.include_router(transaction_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
-
