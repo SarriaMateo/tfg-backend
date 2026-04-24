@@ -8,6 +8,7 @@ from html import escape as html_escape
 import csv
 import io
 import os
+import logging
 from fastapi.responses import Response
 
 from app.db.models.transaction import Transaction, OperationType, TransactionStatus
@@ -31,6 +32,8 @@ from app.services.user.user_service import UserService
 
 class TransactionService:
     """Business logic service for transactions."""
+
+    logger = logging.getLogger(__name__)
 
     # Export constraints
     EXPORT_MAX_LINES_CSV = 50000
@@ -537,7 +540,11 @@ class TransactionService:
             from weasyprint import HTML
 
             return HTML(string=html_content, base_url=str(template_path.parent)).write_pdf(stylesheets=[str(css_path)])
-        except Exception:
+        except Exception as exc:
+            TransactionService.logger.exception(
+                "WeasyPrint PDF rendering failed; using simplified PDF fallback. Error: %s",
+                exc,
+            )
             fallback_lines = [
                 "Exportacion de operaciones",
                 f"Empresa: {company_name}",
