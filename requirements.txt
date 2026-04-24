@@ -28,6 +28,14 @@ httpx>=0.26.0
 
 # PDF rendering
 weasyprint>=62.0
+tinycss2>=1.3.0
+cssselect2>=0.7.0
+pydyf>=0.11.0
+pyphen>=0.15.0
+html5lib>=1.1
+fonttools[woff]>=4.53.0
+brotli>=1.1.0
+zopfli>=0.2.3
 
 # Image conversion
 Pillow>=10.3.0
