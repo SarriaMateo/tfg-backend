@@ -10,5 +10,6 @@ __pycache__/
 *.DS_Store
 C4_ARCHITECTURE_COMPONENT_BACKEND.md
 /media/
+/scripts/
 errorMessages.js
 formatters.js

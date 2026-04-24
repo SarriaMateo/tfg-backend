@@ -148,6 +148,25 @@ def active_admin_same_company(db_session, company_with_data):
 
 
 @pytest.fixture
+def active_user_branch_b_same_company(db_session, company_with_data):
+    company = company_with_data["company"]
+    branch_b = company_with_data["branches"][1]
+    user = User(
+        name="Active Employee Branch B",
+        username="active_items_user_branch_b",
+        hashed_password=hash_password("password123"),
+        role=Role.EMPLOYEE,
+        is_active=True,
+        company_id=company.id,
+        branch_id=branch_b.id,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
 def inactive_user_same_company(db_session, company_with_data):
     company = company_with_data["company"]
     user = User(
@@ -308,6 +327,61 @@ async def test_list_items_order_by_stock_desc(client, active_user_same_company):
     second_total_stock = sum(float(branch["stock"]) for branch in second["stock_by_branch"])
 
     assert first_total_stock >= second_total_stock
+
+
+@pytest.mark.asyncio
+async def test_list_items_order_by_stock_desc_for_specific_branch(client, active_user_same_company, company_with_data):
+    token = build_token(active_user_same_company)
+    branch_a = company_with_data["branches"][0]
+
+    response = await client.get(
+        f"/api/v1/items?order_by=stock&order_desc=true&branch_id={branch_a.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["total"] == 3
+    assert len(payload["data"]) == 3
+    assert payload["data"][0]["name"] == "Apple"
+
+
+@pytest.mark.asyncio
+async def test_list_items_order_by_stock_uses_user_branch_when_user_has_one(
+    client,
+    active_user_branch_b_same_company,
+):
+    token = build_token(active_user_branch_b_same_company)
+
+    response = await client.get(
+        "/api/v1/items?order_by=stock&order_desc=true",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["total"] == 3
+    assert payload["data"][0]["name"] == "Rice Bag"
+
+
+@pytest.mark.asyncio
+async def test_list_items_order_by_stock_rejects_other_branch_for_scoped_user(
+    client,
+    active_user_branch_b_same_company,
+    company_with_data,
+):
+    token = build_token(active_user_branch_b_same_company)
+    branch_a = company_with_data["branches"][0]
+
+    response = await client.get(
+        f"/api/v1/items?order_by=stock&branch_id={branch_a.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "BRANCH_ACCESS_DENIED"
 
 
 @pytest.mark.asyncio

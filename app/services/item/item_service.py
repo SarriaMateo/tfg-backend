@@ -434,6 +434,7 @@ class ItemService:
         page: int = 1,
         page_size: int = 20,
         is_active: Optional[bool] = None,
+        branch_id: Optional[int] = None,
         category_id: Optional[int] = None,
         unit: Optional[str] = None,
         search: Optional[str] = None,
@@ -475,6 +476,30 @@ class ItemService:
         effective_is_active = is_active
         if current_user.role == Role.EMPLOYEE:
             effective_is_active = True
+
+        # Resolve branch scope used by stock ordering.
+        # Users scoped to one branch are always restricted to that branch.
+        effective_branch_id = branch_id
+        if current_user.branch_id is not None:
+            if branch_id is not None and branch_id != current_user.branch_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="BRANCH_ACCESS_DENIED"
+                )
+            effective_branch_id = current_user.branch_id
+
+        if effective_branch_id is not None:
+            branch = BranchRepository.get_by_id(db, effective_branch_id)
+            if not branch:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="BRANCH_NOT_FOUND"
+                )
+            if branch.company_id != current_user.company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="BRANCH_NOT_FOUND"
+                )
 
         # Validate category belongs to user's company if provided
         if category_id is not None:
@@ -532,7 +557,7 @@ class ItemService:
 
         # Build response with stock information
         items_with_stock = []
-        item_total_stock: dict[int, Decimal] = {}
+        item_stock_for_ordering: dict[int, Decimal] = {}
         for item in items:
             # Calculate stock by branch for this item
             stock_by_branch = []
@@ -562,12 +587,18 @@ class ItemService:
                 stock_by_branch=stock_by_branch
             )
             items_with_stock.append(item_with_stock)
-            item_total_stock[item.id] = total_stock
+            if effective_branch_id is not None:
+                item_stock_for_ordering[item.id] = stock_dict.get(
+                    (item.id, effective_branch_id),
+                    Decimal("0.000")
+                )
+            else:
+                item_stock_for_ordering[item.id] = total_stock
 
         # If ordering by stock, sort in memory and apply pagination
         if order_by == "stock":
             items_with_stock.sort(
-                key=lambda item_data: item_total_stock.get(item_data.id, Decimal("0.000")),
+                key=lambda item_data: item_stock_for_ordering.get(item_data.id, Decimal("0.000")),
                 reverse=order_desc
             )
             # Apply pagination

@@ -23,6 +23,7 @@ env/
 
 tests/
 media/
+scripts/
 
 dist/
 build/
