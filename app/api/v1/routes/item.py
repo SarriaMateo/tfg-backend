@@ -27,8 +27,8 @@ def list_items(
     category_id: Optional[int] = Query(None, ge=1),
     unit: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
-    order_by: Literal["sku", "name", "created_at", "price", "stock"] = Query("created_at"),
-    order_desc: bool = Query(True),
+    order_by: Literal["sku", "name", "created_at", "price", "stock"] = Query("name"),
+    order_desc: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):

@@ -32,8 +32,8 @@ class ItemRepository:
         category_id: Optional[int] = None,
         unit: Optional[Unit] = None,
         search: Optional[str] = None,
-        order_by: str = "created_at",
-        order_desc: bool = True
+        order_by: str = "name",
+        order_desc: bool = False
     ) -> Tuple[list[Item], int]:
         """
         List items with filters, search, pagination and sorting.

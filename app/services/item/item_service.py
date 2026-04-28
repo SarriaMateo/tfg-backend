@@ -438,8 +438,8 @@ class ItemService:
         category_id: Optional[int] = None,
         unit: Optional[str] = None,
         search: Optional[str] = None,
-        order_by: str = "created_at",
-        order_desc: bool = True
+        order_by: str = "name",
+        order_desc: bool = False
     ) -> PaginatedResponse[ItemResponse]:
         """
         List items with filters, search, pagination, sorting and stock calculation.
